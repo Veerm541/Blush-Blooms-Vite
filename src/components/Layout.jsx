@@ -111,7 +111,7 @@ export default function Layout() {
         </div>
         <div className="container footer-row">
           <span>© 2026 Blush Blooms · Fresh Flowers</span>
-          <span className="text-muted">Cash on Pickup &amp; GCash accepted</span>
+          <span className="text-muted">Pick-up &amp; delivery · Cash and GCash options</span>
         </div>
       </footer>
 

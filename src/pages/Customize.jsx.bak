@@ -44,34 +44,18 @@ export default function Customize() {
   const canvasRef = useRef(null);
   const uid = useRef(0);
   const drag = useRef(null);
-  const elementsRef = useRef([]);
-  const selectedIdsRef = useRef([]);
-  const historyRef = useRef([]);
-  const redoRef = useRef([]);
-  const clipboardRef = useRef([]);
-  const pasteStepRef = useRef(0);
 
   const [elements, setElements] = useState([]);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [selectionBox, setSelectionBox] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [size, setSize] = useState('Medium');
   const [guidesOn, setGuidesOn] = useState(true);
   const [guides, setGuides] = useState({ v: false, h: false });
   const [interacting, setInteracting] = useState(false);
   const [palette, setPalette] = useState('Wrapper');
-  const [, setHistoryVersion] = useState(0);
-  const [clipboardCount, setClipboardCount] = useState(0);
-
-  useEffect(() => { elementsRef.current = elements; }, [elements]);
-  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
   const sizeInfo = SIZES[size];
-  const selected = selectedIds.length === 1 ? selectedIds[0] : null;
-  const selectedElement = selected ? elements.find(item => item.uid === selected) || null : null;
-  const selectedElements = elements.filter(item => selectedIds.includes(item.uid));
+  const selectedElement = elements.find(item => item.uid === selected) || null;
   const hasWrapper = elements.some(item => item.type === 'Wrapper');
-  const canUndo = historyRef.current.length > 0;
-  const canRedo = redoRef.current.length > 0;
 
   const total = elements.reduce((sum, item) => sum + item.price, 0);
   const counts = useMemo(() => {
@@ -98,43 +82,13 @@ export default function Customize() {
     return { x: event.clientX - rect.left - node.clientLeft, y: event.clientY - rect.top - node.clientTop };
   };
 
-  const cloneElements = list => list.map(item => ({ ...item }));
-
-  const pushHistory = useCallback((snapshot = elementsRef.current) => {
-    historyRef.current.push(cloneElements(snapshot));
-    if (historyRef.current.length > 80) historyRef.current.shift();
-    redoRef.current = [];
-    setHistoryVersion(value => value + 1);
-  }, []);
-
   const update = useCallback((id, patch) => {
     setElements(list => list.map(item => (item.uid === id ? { ...item, ...patch } : item)));
   }, []);
 
-  const removeItems = useCallback((ids, record = true) => {
-    const idList = Array.isArray(ids) ? ids : [ids];
-    if (!idList.length) return;
-    if (record) pushHistory();
-    setElements(list => list.filter(item => !idList.includes(item.uid)));
-    setSelectedIds(current => current.filter(id => !idList.includes(id)));
-  }, [pushHistory]);
-
-  const undo = useCallback(() => {
-    if (!historyRef.current.length) return;
-    const previous = historyRef.current.pop();
-    redoRef.current.push(cloneElements(elementsRef.current));
-    setElements(cloneElements(previous));
-    setSelectedIds([]);
-    setHistoryVersion(value => value + 1);
-  }, []);
-
-  const redo = useCallback(() => {
-    if (!redoRef.current.length) return;
-    const next = redoRef.current.pop();
-    historyRef.current.push(cloneElements(elementsRef.current));
-    setElements(cloneElements(next));
-    setSelectedIds([]);
-    setHistoryVersion(value => value + 1);
+  const remove = useCallback(id => {
+    setElements(list => list.filter(item => item.uid !== id));
+    setSelected(current => (current === id ? null : current));
   }, []);
 
   /* ---------------------------------------------------------------- *
@@ -160,125 +114,51 @@ export default function Customize() {
     ...overrides,
   });
 
-  // Finds a convenient open space for a newly tapped item instead of stacking
-  // every new flower on the same centre point. It is intentionally deterministic:
-  // the same arrangement produces the same next open spot.
+  // Where a new item lands when it is tapped (not dragged): inside the wrapper if there is one.
   const spawnPoint = data => {
     const { W, H } = canvasSize();
+    const jitter = () => Math.random() * 2 - 1;
 
     if (data.type === 'Wrapper') {
       const fit = clamp((W - 24) / data.width, 0.6, 1);
       return { cx: W / 2, cy: H - (data.height * fit) / 2 - 14, scale: fit, rotation: 0 };
     }
 
-    const current = elementsRef.current;
-    const wrap = current.find(item => item.type === 'Wrapper');
-
-    // Ribbons naturally belong around the wrapper neck. If one is already there,
-    // place the next ribbon beside it instead of directly on top of it.
-    if (data.type === 'Ribbon' && wrap) {
-      const wrapH = wrap.h * wrap.scale;
-      const top = wrap.cy - wrapH / 2;
-      const neckY = top + wrapH * 0.73;
-      const ribbonOffsets = [0, -54, 54, -96, 96];
-      const existingRibbons = current.filter(item => item.type === 'Ribbon');
-      const bestOffset = ribbonOffsets
-        .map(offset => ({
-          offset,
-          score: existingRibbons.reduce((score, item) => {
-            const distance = Math.abs((wrap.cx + offset) - item.cx);
-            return score + Math.max(0, 90 - distance);
-          }, 0),
-        }))
-        .sort((a, b) => a.score - b.score)[0]?.offset ?? 0;
-      return { cx: clamp(wrap.cx + bestOffset, 30, W - 30), cy: neckY - 6, scale: 1, rotation: 0 };
+    const wrap = elements.find(item => item.type === 'Wrapper');
+    if (!wrap) {
+      return { cx: W / 2 + jitter() * 60, cy: H * 0.42 + jitter() * 30, scale: 1, rotation: jitter() * 8 };
     }
 
-    const candidates = [];
+    const wrapW = wrap.w * wrap.scale;
+    const wrapH = wrap.h * wrap.scale;
+    const top = wrap.cy - wrapH / 2;
+    const neckY = top + wrapH * 0.73;          // where the real wrap is gathered
+    const stemEndY = neckY - wrapH * 0.07;     // stems end behind the front fold, as in a real wrap
+    const spread = wrapW * 0.26;
+    const offset = jitter() * spread;
+    const itemH = data.height;
 
-    if (wrap) {
-      const wrapW = wrap.w * wrap.scale;
-      const wrapH = wrap.h * wrap.scale;
-      const top = wrap.cy - wrapH / 2;
-      const neckY = top + wrapH * 0.73;
-      const stemEndY = neckY - wrapH * 0.07;
-      const xOffsets = [0, -0.11, 0.11, -0.22, 0.22, -0.32, 0.32, -0.4, 0.4];
-      const yOffsets = [0, -36, 28, -72, 54];
-
-      xOffsets.forEach(xRatio => {
-        yOffsets.forEach(yOffset => {
-          const cx = wrap.cx + wrapW * xRatio;
-          const cy = stemEndY - data.height / 2 + yOffset;
-          candidates.push({
-            cx: clamp(cx, 20, W - 20),
-            cy: clamp(cy, data.height * 0.18, H - 20),
-            scale: 1,
-            rotation: Math.round(xRatio * 38),
-          });
-        });
-      });
-    } else {
-      // No wrapper yet: use the visible bouquet guide as the safe placement area.
-      const ratios = size === 'Small'
-        ? { w: 0.46, h: 0.58 }
-        : size === 'Large'
-          ? { w: 0.82, h: 0.84 }
-          : { w: 0.64, h: 0.72 };
-      const guideW = W * ratios.w;
-      const guideH = H * ratios.h;
-      const left = (W - guideW) / 2;
-      const top = H - 18 - guideH;
-      const xs = [0.5, 0.35, 0.65, 0.22, 0.78];
-      const ys = [0.42, 0.28, 0.56, 0.18, 0.68];
-      xs.forEach((xRatio, xi) => {
-        ys.forEach((yRatio, yi) => {
-          candidates.push({
-            cx: left + guideW * xRatio,
-            cy: top + guideH * yRatio,
-            scale: 1,
-            rotation: Math.round((xRatio - 0.5) * 24 + (yi - xi) * 1.5),
-          });
-        });
-      });
+    if (data.type === 'Ribbon') {
+      return { cx: wrap.cx, cy: neckY - 6, scale: 1, rotation: 0 };
     }
-
-    const comparable = current.filter(item => item.type !== 'Wrapper' && item.type !== 'Ribbon');
-    const headPoint = (item, candidate = false) => ({
-      x: candidate ? item.cx : item.cx,
-      y: item.cy - (item.h * (item.scale ?? 1)) * 0.28,
-    });
-
-    // Prefer the candidate whose visible flower head is furthest from existing heads.
-    // A small centre bias keeps the bouquet cohesive instead of scattering items to edges.
-    const scored = candidates.map(candidate => {
-      const candidateItem = { ...candidate, h: data.height };
-      const head = headPoint(candidateItem, true);
-      const crowding = comparable.reduce((score, item) => {
-        const other = headPoint(item);
-        const distance = Math.hypot(head.x - other.x, head.y - other.y);
-        return score + Math.max(0, 118 - distance) ** 2;
-      }, 0);
-      const centreBias = Math.abs(candidate.cx - W / 2) * 2.2 + Math.abs(candidate.cy - H * 0.42) * 0.35;
-      return { ...candidate, score: crowding + centreBias };
-    });
-
-    return scored.sort((a, b) => a.score - b.score)[0] || { cx: W / 2, cy: H * 0.42, scale: 1, rotation: 0 };
+    return {
+      cx: wrap.cx + offset,
+      cy: stemEndY - itemH / 2 + jitter() * 8,
+      scale: 1,
+      rotation: Math.round((offset / spread) * 12),   // fan the stems out a little, like a real bunch
+    };
   };
 
   const add = (data, dropPoint) => {
-    const current = elementsRef.current;
-
-    // One wrapper per bouquet: choosing another one swaps the wrapper design
-    // while keeping all flowers in place.
+    // One wrapper per bouquet: choosing another one swaps the look and keeps your layout.
     if (data.type === 'Wrapper') {
-      const existing = current.find(item => item.type === 'Wrapper');
+      const existing = elements.find(item => item.type === 'Wrapper');
       if (existing) {
-        pushHistory();
         update(existing.uid, {
           id: data.id, name: data.name, price: data.price, image: data.image, imageBack: data.imageBack,
           svg: data.svg, svgBack: data.svgBack, w: data.width, h: data.height,
         });
-        setSelectedIds([existing.uid]);
+        setSelected(existing.uid);
         return;
       }
     }
@@ -291,10 +171,8 @@ export default function Customize() {
       dropPoint && data.type !== 'Wrapper' ? clamp(dropPoint.y, 0, H) : spawn.cy,
       { scale: spawn.scale, rotation: dropPoint && data.type !== 'Wrapper' ? 0 : spawn.rotation },
     );
-
-    pushHistory();
     setElements(list => [...list, next]);
-    setSelectedIds([next.uid]);
+    setSelected(next.uid);
   };
 
   const onDrop = event => {
@@ -308,112 +186,18 @@ export default function Customize() {
     }
   };
 
-  const itemBounds = item => {
-    const width = item.w * item.scale;
-    const height = item.h * item.scale;
-    return {
-      left: item.cx - width / 2,
-      right: item.cx + width / 2,
-      top: item.cy - height / 2,
-      bottom: item.cy + height / 2,
-    };
-  };
-
   /* ---------------------------------------------------------------- *
-   * Canva-style selection and direct manipulation.
-   * - Drag empty canvas = box selection
-   * - Shift + click = add/remove one item from the selection
-   * - Drag a selected group = move the group together
-   * - Corner handles = resize one item
-   * - Top handle = rotate one item
+   * Direct manipulation (Canva-style): drag to move, corner dots to resize,
+   * top dot to turn, arrow keys to nudge, Delete to remove.
    * ---------------------------------------------------------------- */
-  const beginBoxSelection = event => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-
-    const startPoint = pointOnCanvas(event);
-    const additive = event.shiftKey;
-    const startingSelection = additive ? selectedIdsRef.current : [];
-    let moved = false;
-
-    if (!additive) setSelectedIds([]);
-    setSelectionBox({ x: startPoint.x, y: startPoint.y, width: 0, height: 0 });
-
-    const move = pointerEvent => {
-      const point = pointOnCanvas(pointerEvent);
-      if (Math.hypot(point.x - startPoint.x, point.y - startPoint.y) > 4) moved = true;
-      setSelectionBox({
-        x: Math.min(startPoint.x, point.x),
-        y: Math.min(startPoint.y, point.y),
-        width: Math.abs(point.x - startPoint.x),
-        height: Math.abs(point.y - startPoint.y),
-      });
-    };
-
-    const up = pointerEvent => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-
-      if (moved) {
-        const point = pointOnCanvas(pointerEvent);
-        const box = {
-          left: Math.min(startPoint.x, point.x),
-          right: Math.max(startPoint.x, point.x),
-          top: Math.min(startPoint.y, point.y),
-          bottom: Math.max(startPoint.y, point.y),
-        };
-        const inside = elementsRef.current
-          .filter(item => {
-            const bounds = itemBounds(item);
-            return bounds.right >= box.left && bounds.left <= box.right && bounds.bottom >= box.top && bounds.top <= box.bottom;
-          })
-          .map(item => item.uid);
-        setSelectedIds(Array.from(new Set([...startingSelection, ...inside])));
-      } else if (!additive) {
-        setSelectedIds([]);
-      }
-
-      setSelectionBox(null);
-    };
-
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
-  };
-
   const beginInteraction = (event, mode, item) => {
     event.preventDefault();
     event.stopPropagation();
-
-    // Shift-click behaves like Canva: add/remove an object from the current selection.
-    if (event.shiftKey && mode === 'move') {
-      setSelectedIds(current => current.includes(item.uid)
-        ? current.filter(id => id !== item.uid)
-        : [...current, item.uid]);
-      return;
-    }
-
     const point = pointOnCanvas(event);
-    const currentSelection = selectedIdsRef.current;
-    const movingIds = mode === 'move' && currentSelection.includes(item.uid) && currentSelection.length > 1
-      ? currentSelection
-      : [item.uid];
-
-    if (mode !== 'move' || !currentSelection.includes(item.uid)) setSelectedIds([item.uid]);
-
-    const starts = Object.fromEntries(
-      elementsRef.current
-        .filter(entry => movingIds.includes(entry.uid))
-        .map(entry => [entry.uid, { cx: entry.cx, cy: entry.cy }]),
-    );
-
+    setSelected(item.uid);
     drag.current = {
       mode,
       uid: item.uid,
-      ids: movingIds,
-      starts,
-      before: cloneElements(elementsRef.current),
       startX: point.x,
       startY: point.y,
       offsetX: point.x - item.cx,
@@ -423,7 +207,6 @@ export default function Customize() {
       cx: item.cx,
       cy: item.cy,
       moved: false,
-      changed: false,
     };
 
     const move = pointerEvent => {
@@ -435,36 +218,21 @@ export default function Customize() {
       if (state.mode === 'move') {
         if (!state.moved && Math.hypot(p.x - state.startX, p.y - state.startY) < 2) return;
         state.moved = true;
-        state.changed = true;
         setInteracting(true);
-
-        const leaderStart = state.starts[state.uid];
-        let nx = p.x - state.offsetX;
-        let ny = p.y - state.offsetY;
-        const nextGuides = { v: false, h: false };
-
+        let nx = clamp(p.x - state.offsetX, 0, W);
+        let ny = clamp(p.y - state.offsetY, 0, H);
+        const next = { v: false, h: false };
         if (guidesOn) {
-          if (Math.abs(nx - W / 2) < SNAP_DISTANCE) { nx = W / 2; nextGuides.v = true; }
-          if (Math.abs(ny - H / 2) < SNAP_DISTANCE) { ny = H / 2; nextGuides.h = true; }
+          if (Math.abs(nx - W / 2) < SNAP_DISTANCE) { nx = W / 2; next.v = true; }
+          if (Math.abs(ny - H / 2) < SNAP_DISTANCE) { ny = H / 2; next.h = true; }
         }
-
-        let dx = nx - leaderStart.cx;
-        let dy = ny - leaderStart.cy;
-        const startsList = Object.values(state.starts);
-        dx = clamp(dx, Math.max(...startsList.map(start => -start.cx)), Math.min(...startsList.map(start => W - start.cx)));
-        dy = clamp(dy, Math.max(...startsList.map(start => -start.cy)), Math.min(...startsList.map(start => H - start.cy)));
-
-        setGuides(current => (current.v === nextGuides.v && current.h === nextGuides.h ? current : nextGuides));
-        setElements(list => list.map(entry => state.ids.includes(entry.uid)
-          ? { ...entry, cx: state.starts[entry.uid].cx + dx, cy: state.starts[entry.uid].cy + dy }
-          : entry));
+        setGuides(current => (current.v === next.v && current.h === next.h ? current : next));
+        update(state.uid, { cx: nx, cy: ny });
       } else if (state.mode === 'resize') {
-        state.changed = true;
         setInteracting(true);
         const dist = Math.max(12, Math.hypot(p.x - state.cx, p.y - state.cy));
         update(state.uid, { scale: clamp(Number((state.startScale * (dist / state.startDist)).toFixed(3)), MIN_SCALE, MAX_SCALE) });
       } else if (state.mode === 'rotate') {
-        state.changed = true;
         setInteracting(true);
         let angle = (Math.atan2(p.y - state.cy, p.x - state.cx) * 180) / Math.PI + 90;
         const nearest = Math.round(angle / ROTATE_SNAP) * ROTATE_SNAP;
@@ -474,14 +242,12 @@ export default function Customize() {
     };
 
     const up = () => {
-      const state = drag.current;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       drag.current = null;
       setInteracting(false);
       setGuides({ v: false, h: false });
-      if (state?.changed) pushHistory(state.before);
     };
 
     window.addEventListener('pointermove', move);
@@ -489,149 +255,63 @@ export default function Customize() {
     window.addEventListener('pointercancel', up);
   };
 
-  const copySelection = useCallback(() => {
-    const ids = selectedIdsRef.current;
-    if (!ids.length) return;
-    clipboardRef.current = elementsRef.current
-      .filter(item => ids.includes(item.uid))
-      .map(item => ({ ...item }));
-    pasteStepRef.current = 0;
-    setClipboardCount(clipboardRef.current.length);
-  }, []);
-
-  const pasteClipboard = useCallback(() => {
-    const source = clipboardRef.current;
-    if (!source.length) return;
-
-    const existingHasWrapper = elementsRef.current.some(item => item.type === 'Wrapper');
-    const pasteable = source.filter(item => !(item.type === 'Wrapper' && existingHasWrapper));
-    if (!pasteable.length) return;
-
+  const duplicateSelected = item => {
+    if (item.type === 'Wrapper') return;
     const { W, H } = canvasSize();
-    pasteStepRef.current = (pasteStepRef.current % 5) + 1;
-    let dx = 24 * pasteStepRef.current;
-    let dy = 24 * pasteStepRef.current;
-
-    const left = Math.min(...pasteable.map(item => itemBounds(item).left));
-    const right = Math.max(...pasteable.map(item => itemBounds(item).right));
-    const top = Math.min(...pasteable.map(item => itemBounds(item).top));
-    const bottom = Math.max(...pasteable.map(item => itemBounds(item).bottom));
-    if (right + dx > W) dx = Math.max(-left + 8, W - right - 8);
-    if (bottom + dy > H) dy = Math.max(-top + 8, H - bottom - 8);
-
-    const copies = pasteable.map(item => ({
-      ...item,
-      uid: ++uid.current,
-      cx: clamp(item.cx + dx, 0, W),
-      cy: clamp(item.cy + dy, 0, H),
-    }));
-
-    pushHistory();
-    setElements(list => [...list, ...copies]);
-    setSelectedIds(copies.map(item => item.uid));
-  }, [pushHistory]);
-
-  const duplicateSelection = () => {
-    const ids = selectedIdsRef.current;
-    if (!ids.length) return;
-    const source = elementsRef.current.filter(item => ids.includes(item.uid) && item.type !== 'Wrapper');
-    if (!source.length) return;
-    const { W, H } = canvasSize();
-    const copies = source.map(item => ({
+    const copy = {
       ...item,
       uid: ++uid.current,
       cx: clamp(item.cx + 26, 0, W),
       cy: clamp(item.cy + 26, 0, H),
-    }));
-    pushHistory();
-    setElements(list => [...list, ...copies]);
-    setSelectedIds(copies.map(item => item.uid));
+    };
+    setElements(list => [...list, copy]);
+    setSelected(copy.uid);
   };
 
   const act = action => {
-    const ids = selectedIdsRef.current;
-    if (!ids.length) return;
-    if (action === 'delete') { removeItems(ids); return; }
-    if (action === 'duplicate') { duplicateSelection(); return; }
+    const item = elements.find(entry => entry.uid === selected);
+    if (!item) return;
+    if (action === 'delete') { remove(item.uid); return; }
+    if (action === 'duplicate') { duplicateSelected(item); return; }
 
-    pushHistory();
-    setElements(list => list.map(item => {
-      if (!ids.includes(item.uid)) return item;
-      const patch = {
-        'rotate-left': { rotation: normalizeAngle(item.rotation - 15) },
-        'rotate-right': { rotation: normalizeAngle(item.rotation + 15) },
-        'scale-up': { scale: clamp(Number((item.scale * 1.14).toFixed(3)), MIN_SCALE, MAX_SCALE) },
-        'scale-down': { scale: clamp(Number((item.scale / 1.14).toFixed(3)), MIN_SCALE, MAX_SCALE) },
-        flip: { flipped: !item.flipped },
-      }[action];
-      return patch ? { ...item, ...patch } : item;
-    }));
+    const patch = {
+      'rotate-left': { rotation: normalizeAngle(item.rotation - 15) },
+      'rotate-right': { rotation: normalizeAngle(item.rotation + 15) },
+      'scale-up': { scale: clamp(Number((item.scale * 1.14).toFixed(3)), MIN_SCALE, MAX_SCALE) },
+      'scale-down': { scale: clamp(Number((item.scale / 1.14).toFixed(3)), MIN_SCALE, MAX_SCALE) },
+      flip: { flipped: !item.flipped },
+    }[action];
+    if (patch) update(item.uid, patch);
   };
 
-  // Keyboard shortcuts intentionally mirror familiar design tools.
+  // Keyboard: arrows nudge (Shift = bigger steps), Delete / Backspace removes.
   useEffect(() => {
     const onKey = event => {
+      if (!selected) return;
       const tag = event.target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
-
-      const modifier = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
-
-      if (modifier && key === 'c' && selectedIdsRef.current.length) {
-        event.preventDefault();
-        copySelection();
-        return;
-      }
-      if (modifier && key === 'v' && clipboardRef.current.length) {
-        event.preventDefault();
-        pasteClipboard();
-        return;
-      }
-      if (modifier && key === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) redo(); else undo();
-        return;
-      }
-      if (modifier && key === 'y') {
-        event.preventDefault();
-        redo();
-        return;
-      }
-      if (modifier && key === 'a' && elementsRef.current.length) {
-        event.preventDefault();
-        setSelectedIds(elementsRef.current.map(item => item.uid));
-        return;
-      }
-
-      const ids = selectedIdsRef.current;
-      if (!ids.length) return;
-
       const step = event.shiftKey ? 10 : 1;
       const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
       if (moves[event.key]) {
         event.preventDefault();
-        pushHistory();
         const { W, H } = canvasSize();
-        setElements(list => list.map(item => (ids.includes(item.uid)
+        setElements(list => list.map(item => (item.uid === selected
           ? { ...item, cx: clamp(item.cx + moves[event.key][0], 0, W), cy: clamp(item.cy + moves[event.key][1], 0, H) }
           : item)));
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        removeItems(ids);
+        remove(selected);
       } else if (event.key === 'Escape') {
-        setSelectedIds([]);
+        setSelected(null);
       }
     };
-
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [copySelection, pasteClipboard, pushHistory, redo, removeItems, undo]);
+  }, [selected, remove]);
 
   const clearCanvas = () => {
-    if (!elementsRef.current.length) return;
-    pushHistory();
     setElements([]);
-    setSelectedIds([]);
+    setSelected(null);
   };
 
   /* ---------------------------------------------------------------- *
@@ -706,7 +386,7 @@ export default function Customize() {
       return;
     }
 
-    setSelectedIds([]);
+    setSelected(null);
     let snapshot = null;
     try {
       snapshot = await renderSnapshot();
@@ -745,7 +425,7 @@ export default function Customize() {
   );
 
   const renderItem = (item, index) => {
-    const isSelected = selectedIds.includes(item.uid);
+    const isSelected = selected === item.uid;
     const grab = event => beginInteraction(event, 'move', item);
 
     if (item.type === 'Wrapper') {
@@ -771,15 +451,6 @@ export default function Customize() {
       </div>
     );
   };
-
-  const multiSelectionBounds = selectedElements.length > 1
-    ? {
-        left: Math.min(...selectedElements.map(item => itemBounds(item).left)),
-        top: Math.min(...selectedElements.map(item => itemBounds(item).top)),
-        right: Math.max(...selectedElements.map(item => itemBounds(item).right)),
-        bottom: Math.max(...selectedElements.map(item => itemBounds(item).bottom)),
-      }
-    : null;
 
   const sortedCheck = [
     ['Wrapper', 'Wrapper added'],
@@ -821,8 +492,8 @@ export default function Customize() {
             </div>
             <div className="customizer-help-steps">
               <div><b>1</b><p><strong>Choose.</strong> Start with a wrapper. Then tap flowers, fillers, and ribbons.</p></div>
-              <div><b>2</b><p><strong>Move.</strong> Tap an item, then hold the pink <em>Drag to move</em> handle and drag it where you want.</p></div>
-              <div><b>3</b><p><strong>Change.</strong> Use the corner dots to resize, or use the big buttons below the picture.</p></div>
+              <div><b>2</b><p><strong>Move.</strong> Drag it to the place you want. Pull a corner dot to resize.</p></div>
+              <div><b>3</b><p><strong>Change.</strong> Tap an item, then use the big buttons below the picture.</p></div>
             </div>
           </div>
         </div>
@@ -876,24 +547,10 @@ export default function Customize() {
                 <h3 className="canvas-title">Arrange your bouquet</h3>
               </div>
 
-              <div className="customizer-top-controls">
-                <div className="customizer-edit-tools" aria-label="Canvas edit controls">
-                  <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">↶ <span>Undo</span></button>
-                  <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷ <span>Redo</span></button>
-                  <button type="button" onClick={copySelection} disabled={!selectedIds.length} title="Copy selected (Ctrl+C)">⧉ <span>Copy</span></button>
-                  <button type="button" onClick={pasteClipboard} disabled={!clipboardCount} title="Paste (Ctrl+V)">▣ <span>Paste</span></button>
-                  <button type="button" className="clear-tool" onClick={clearCanvas} disabled={!elements.length} title="Clear all objects">× <span>Clear</span></button>
-                </div>
-
-                <label className="snap-toggle customizer-snap-toggle">
-                  <input type="checkbox" checked={guidesOn} onChange={event => setGuidesOn(event.target.checked)} />
-                  Help me center things
-                </label>
-              </div>
-            </div>
-
-            <div className="customizer-shortcuts-note">
-              <strong>Computer tips:</strong> Ctrl+C copy · Ctrl+V paste · Ctrl+Z undo · drag an empty area to select many items · Shift+click to add one item to your selection.
+              <label className="snap-toggle customizer-snap-toggle">
+                <input type="checkbox" checked={guidesOn} onChange={event => setGuidesOn(event.target.checked)} />
+                Help me center things
+              </label>
             </div>
 
             <div className="size-choice-block">
@@ -919,7 +576,7 @@ export default function Customize() {
             <div
               className={`canvas customizer-canvas${interacting ? ' is-interacting' : ''}`}
               ref={canvasRef}
-              onPointerDown={beginBoxSelection}
+              onPointerDown={() => setSelected(null)}
               onDragOver={event => event.preventDefault()}
               onDrop={onDrop}
             >
@@ -951,21 +608,8 @@ export default function Customize() {
 
               {elements.map(renderItem)}
 
-              {selectionBox && (
-                <div
-                  className="cv-box-selection"
-                  style={{ left: selectionBox.x, top: selectionBox.y, width: selectionBox.width, height: selectionBox.height }}
-                  aria-hidden="true"
-                />
-              )}
-
               {selectedElement && (
-                <div
-                  className="cv-selection"
-                  style={{ ...geometry(selectedElement), zIndex: 9000 }}
-                  role="group"
-                  aria-label={`${selectedElement.name} selected`}
-                >
+                <div className="cv-selection" style={{ ...geometry(selectedElement), zIndex: 9000 }} aria-hidden="true">
                   {['tl', 'tr', 'bl', 'br'].map(corner => (
                     <span
                       key={corner}
@@ -975,44 +619,6 @@ export default function Customize() {
                   ))}
                   <span className="cv-rotate-stem" />
                   <span className="cv-handle cv-handle-rotate" onPointerDown={event => beginInteraction(event, 'rotate', selectedElement)} />
-                  <button
-                    type="button"
-                    className="cv-move-handle"
-                    style={{ transform: `translate(-50%, 50%) rotate(${-selectedElement.rotation}deg)` }}
-                    onPointerDown={event => beginInteraction(event, 'move', selectedElement)}
-                    title={`Drag ${selectedElement.name} to move it`}
-                    aria-label={`Drag ${selectedElement.name} to move it`}
-                  >
-                    <span aria-hidden="true">⠿</span>
-                    Drag to move
-                  </button>
-                </div>
-              )}
-
-              {multiSelectionBounds && (
-                <div
-                  className="cv-selection cv-selection-group"
-                  style={{
-                    left: multiSelectionBounds.left,
-                    top: multiSelectionBounds.top,
-                    width: multiSelectionBounds.right - multiSelectionBounds.left,
-                    height: multiSelectionBounds.bottom - multiSelectionBounds.top,
-                    zIndex: 9000,
-                  }}
-                  role="group"
-                  aria-label={`${selectedElements.length} bouquet items selected`}
-                >
-                  <span className="cv-group-label">{selectedElements.length} items selected</span>
-                  <button
-                    type="button"
-                    className="cv-move-handle cv-move-handle-group"
-                    onPointerDown={event => beginInteraction(event, 'move', selectedElements[0])}
-                    title="Drag the selected items together"
-                    aria-label="Drag the selected items together"
-                  >
-                    <span aria-hidden="true">⠿</span>
-                    Drag selected
-                  </button>
                 </div>
               )}
             </div>
@@ -1021,48 +627,22 @@ export default function Customize() {
               <div className="selected-element-heading">
                 <div>
                   <span className="eyebrow">Step 3</span>
-                  <strong>
-                    {selectedElement
-                      ? `Selected: ${selectedElement.name}`
-                      : selectedElements.length > 1
-                        ? `${selectedElements.length} items selected`
-                        : 'Tap an item or drag a box to select'}
-                  </strong>
+                  <strong>{selectedElement ? `Selected: ${selectedElement.name}` : 'Tap an item to change it'}</strong>
                 </div>
                 {selectedElement && <span className="selected-element-type">{PALETTE_LABELS[selectedElement.type] || selectedElement.type}</span>}
-                {selectedElements.length > 1 && <span className="selected-element-type">Multiple items</span>}
               </div>
 
-              {selectedIds.length > 0 && (
-                <div className="selected-drag-hint">
-                  <span className="selected-drag-hint-icon" aria-hidden="true">⠿</span>
-                  <div>
-                    <strong>Need to move it?</strong>
-                    <p>Hold the pink <b>Drag to move</b> handle on the selected item, then drag it anywhere inside the bouquet.</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flower-toolbar customizer-action-toolbar" hidden={!selectedIds.length}>
+              <div className="flower-toolbar customizer-action-toolbar" hidden={!selectedElement}>
                 <button type="button" onClick={() => act('rotate-left')}><span>↶</span>Turn left</button>
                 <button type="button" onClick={() => act('rotate-right')}><span>↷</span>Turn right</button>
                 <button type="button" onClick={() => act('scale-down')}><span>−</span>Smaller</button>
                 <button type="button" onClick={() => act('scale-up')}><span>＋</span>Bigger</button>
                 <button type="button" onClick={() => act('flip')}><span>⇄</span>Flip</button>
-                <button
-                  type="button"
-                  onClick={() => act('duplicate')}
-                  disabled={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper')}
-                  title={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper') ? 'A bouquet has one wrapper' : 'Duplicate selected item(s)'}
-                ><span>⧉</span>Duplicate</button>
+                <button type="button" onClick={() => act('duplicate')} disabled={selectedElement?.type === 'Wrapper'} title={selectedElement?.type === 'Wrapper' ? 'A bouquet has one wrapper' : undefined}><span>⧉</span>Copy</button>
                 <button type="button" className="danger" onClick={() => act('delete')}><span>×</span>Remove</button>
               </div>
 
-              {!selectedIds.length && (
-                <p className="selected-element-empty">
-                  Tip: tap one item to edit it. A pink <b>Drag to move</b> handle will appear so small fillers and leaves are easier to move. On a computer, drag across an empty part of the canvas to select several items at once.
-                </p>
-              )}
+              {!selectedElement && <p className="selected-element-empty">Tip: tap any wrapper, flower, leaf, or ribbon in the bouquet. The buttons will appear here.</p>}
             </div>
           </section>
 

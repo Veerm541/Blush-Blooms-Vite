@@ -1,11 +1,10 @@
 import A from '../components/A.jsx';
-import Stat from '../components/Stat.jsx';
-import Testimonials from '../components/Testimonials.jsx';
-import { NewsletterForm } from '../components/forms.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { PRODUCTS } from '../data/products.js';
+import { peso } from '../lib/format.js';
 
-const byId = id => PRODUCTS.find(p => p.id === id);
+const FEATURED_IDS = ['royal-blue', 'orchid-blush', 'lily-rose', 'crimson-roses'];
+const featured = FEATURED_IDS.map(id => PRODUCTS.find(p => p.id === id)).filter(Boolean);
 
 export default function Home() {
   const { addToCart } = useCart();
@@ -16,194 +15,36 @@ export default function Home() {
         <div className="hero-content fade-in">
           <div className="script">Hand-picked with a little heart</div>
           <h1>Fresh flowers.<br />Soft moments.</h1>
-          <p>
-            Warm, garden-inspired blooms arranged for birthdays, quiet
-            thank-yous, dinner tables, and the ordinary days that deserve
-            something beautiful.
-          </p>
-          <div className="hero-actions">
-            <A className="btn btn-primary" href="/shop">Shop fresh blooms</A><A className="btn btn-light" href="/customize">Build a bouquet</A>
-          </div>
+          <p>Browse pre-made bouquets or create your own arrangement using our interactive 2D floral customizer.</p>
+          <div className="hero-actions"><A className="btn btn-primary" href="/shop">Shop fresh blooms</A><A className="btn btn-light" href="/customize">Build a bouquet</A></div>
         </div>
       </section>
-      <section className="section">
-        <div className="container">
-          <div className="section-head fade-in">
-            <div>
-              <div className="eyebrow">Recommended for you</div>
-              <h2>Blooms for every mood.</h2>
-            </div>
-            <p>
-              Our seasonal collection leans romantic, loose, and natural — never
-              too perfect, always arranged with intention.
-            </p>
-          </div>
-          <div className="grid grid-3 recommended-grid">
-            <article className="product-card card fade-in">
-              <div className="media">
-                <img
-                  src="/images/bouquet-royal-blue.jpg"
-                  alt="Royal Blue Elegance bouquet — cream roses and pink carnations wrapped in royal blue paper"
-                />
-              </div>
-              <div className="product-info">
-                <span className="tag">Best seller</span>
-                <div className="product-meta">
-                  <div>
-                    <h3>Royal Blue Elegance</h3>
-                    <p className="text-muted">Cream roses, pink carnations &amp; gyp</p>
-                  </div>
-                  <strong className="product-price">₱1,750</strong>
-                </div>
-                <div className="card-actions">
-                  <button className="btn btn-dark" onClick={() => addToCart(byId('royal-blue'))}>
-                    Add to bag</button
-                  ><A className="btn btn-outline" href="/shop">View</A>
-                </div>
-              </div>
-            </article>
-            <article className="product-card card fade-in">
-              <div className="media">
-                <img
-                  src="/images/bouquet-orchid-blush.jpg"
-                  alt="Orchid Blush Mix bouquet — carnations, roses and statice in violet and pink"
-                />
-              </div>
-              <div className="product-info">
-                <span className="tag">Seasonal</span>
-                <div className="product-meta">
-                  <div>
-                    <h3>Orchid Blush Mix</h3>
-                    <p className="text-muted">Carnations, roses &amp; statice</p>
-                  </div>
-                  <strong className="product-price">₱1,650</strong>
-                </div>
-                <div className="card-actions">
-                  <button className="btn btn-dark" onClick={() => addToCart(byId('orchid-blush'))}>
-                    Add to bag</button
-                  ><A className="btn btn-outline" href="/shop">View</A>
-                </div>
-              </div>
-            </article>
-            <article className="product-card card fade-in">
-              <div className="media">
-                <img
-                  src="/images/bouquet-lily-rose.jpg"
-                  alt="Lily and Rose bouquet — white roses and pink stargazer lilies in kraft wrap"
-                />
-              </div>
-              <div className="product-info">
-                <span className="tag">New</span>
-                <div className="product-meta">
-                  <div>
-                    <h3>Lily &amp; Rose</h3>
-                    <p className="text-muted">White roses &amp; stargazer lilies</p>
-                  </div>
-                  <strong className="product-price">₱2,350</strong>
-                </div>
-                <div className="card-actions">
-                  <button className="btn btn-dark" onClick={() => addToCart(byId('lily-rose'))}>
-                    Add to bag</button
-                  ><A className="btn btn-outline" href="/shop">View</A>
-                </div>
-              </div>
-            </article>
-            <article className="product-card card fade-in">
-              <div className="media">
-                <img
-                  src="/images/bouquet-crimson-roses.jpg"
-                  alt="Crimson Romance bouquet — a dozen red roses with baby's breath"
-                />
-              </div>
-              <div className="product-info">
-                <span className="tag">Customer favorite</span>
-                <div className="product-meta">
-                  <div>
-                    <h3>Crimson Romance</h3>
-                    <p className="text-muted">A dozen red roses &amp; baby's breath</p>
-                  </div>
-                  <strong className="product-price">₱2,100</strong>
-                </div>
-                <div className="card-actions">
-                  <button className="btn btn-dark" onClick={() => addToCart(byId('crimson-roses'))}>
-                    Add to bag</button
-                  ><A className="btn btn-outline" href="/shop">View</A>
-                </div>
-              </div>
-            </article>
-          </div>
-          <div className="center" style={{marginTop: '30px'}}>
-            <A className="btn btn-outline" href="/shop">See the full shop</A>
-          </div>
+
+      <section className="section"><div className="container">
+        <div className="section-head fade-in"><div><div className="eyebrow">Featured arrangements</div><h2>Blooms for every mood.</h2></div><p>Browse current bouquet options, review prices and details, then add your chosen arrangement to the bag.</p></div>
+        <div className="grid grid-4 recommended-grid">{featured.map(p => <article className="product-card home-product-card card fade-in" key={p.id}><div className="media"><img src={p.image} alt={p.name} /></div><div className="product-info">{p.tag && <span className="tag">{p.tag}</span>}<div className="product-meta"><div><h3>{p.name}</h3><p className="text-muted">{p.desc}</p></div><strong className="product-price">{peso(p.price)}</strong></div><div className="home-product-actions"><button className="home-add-bag-btn" type="button" onClick={() => addToCart(p)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V6a5 5 0 0 1 10 0v2"/><path d="M5.5 8h13l1 12h-15l1-12Z"/></svg><span>Add to bag</span></button><A className="home-view-shop-link" href="/shop">View in shop <span aria-hidden="true">→</span></A></div></div></article>)}</div>
+        <div className="center" style={{ marginTop: 30 }}><A className="btn btn-outline" href="/shop">See the full shop</A></div>
+      </div></section>
+
+      <section className="section-sm"><div className="container split">
+        <div className="soft-panel fade-in"><div className="eyebrow">Make it yours</div><h2>Drag. Drop. Bloom.</h2><p>Choose flowers, wrappers, and ribbons, arrange them on the 2D canvas, and watch the bouquet price update as you build.</p><A className="btn btn-dark" href="/customize">Open bouquet builder</A></div>
+        <img className="round-img fade-in" src="https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=1200&q=85" alt="Fresh flowers on a table" />
+      </div></section>
+
+      <section className="section"><div className="container">
+        <div className="section-head fade-in"><div><div className="eyebrow">How it works</div><h2>From bouquet to fulfillment.</h2></div><p>The storefront guides customers through product selection, customization, checkout, and order tracking.</p></div>
+        <div className="customer-flow-grid">
+          <div className="flow-card"><span>01</span><strong>Browse</strong><p>Choose a pre-made bouquet and review product details and pricing.</p></div>
+          <div className="flow-card"><span>02</span><strong>Customize</strong><p>Build a 2D arrangement using flowers, wrappers, and ribbons.</p></div>
+          <div className="flow-card"><span>03</span><strong>Checkout</strong><p>Select store pick-up or eligible delivery, then choose cash or GCash.</p></div>
+          <div className="flow-card"><span>04</span><strong>Track</strong><p>Use the generated order number to monitor fulfillment progress.</p></div>
         </div>
-      </section>
-      <section className="section-sm">
-        <div className="container split">
-          <div className="soft-panel fade-in">
-            <div className="eyebrow">Make it yours</div>
-            <h2>Drag. Drop. Bloom.</h2>
-            <p>
-              Our playful 2D bouquet builder lets you choose stems and arrange
-              them your way before adding your creation to the bag.
-            </p>
-            <A className="btn btn-dark" href="/customize"
-              >Open bouquet builder</A>
-          </div>
-          <img
-            className="round-img fade-in"
-            src="https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=1200&q=85"
-            alt="Fresh flowers on a table"
-          />
-        </div>
-      </section>
-      <section className="section">
-        <div className="container">
-          <div className="stats fade-in">
-            <div className="stat-grid">
-              <div>
-                <Stat count={1200} suffix="+" />
-                <div className="stat-label">bouquets delivered</div>
-              </div>
-              <div>
-                <Stat count={48} suffix="h" />
-                <div className="stat-label">freshness promise</div>
-              </div>
-              <div>
-                <Stat count={96} suffix="%" />
-                <div className="stat-label">happy gifters</div>
-              </div>
-              <div>
-                <Stat count={17} suffix="" />
-                <div className="stat-label">seasonal stem types</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className="section-sm">
-        <div className="container">
-          <div className="section-head fade-in">
-            <div>
-              <div className="eyebrow">Kind words</div>
-              <h2>Flowers that made someone's day.</h2>
-            </div>
-            <p>Realistic sample testimonials for the storefront experience.</p>
-          </div>
-          <Testimonials />
-        </div>
-      </section>
-      <section className="section-sm" id="newsletter">
-        <div className="container">
-          <div className="newsletter fade-in">
-            <div>
-              <div className="eyebrow">Stay in the loop</div>
-              <h2>Fresh drops, not inbox clutter.</h2>
-              <p>Seasonal flowers, weekend stems, and small shop stories.</p>
-            </div>
-            <NewsletterForm />
-          </div>
-        </div>
-      </section>
+      </div></section>
+
+      <section className="section-sm"><div className="container fulfillment-home-grid">
+        <div className="fulfillment-home-card"><div className="eyebrow">Store pick-up</div><h3>Pick up when your bouquet is ready.</h3><p className="text-muted">Choose a preferred pick-up date and time during checkout. The order status will show when the bouquet is ready for pick-up.</p></div>
+        <div className="fulfillment-home-card"><div className="eyebrow">Delivery</div><h3>Delivery for eligible locations.</h3><p className="text-muted">Provide your address, barangay, landmark, preferred date, and delivery time slot. Availability depends on the shop&apos;s serviceable area.</p></div>
+      </div></section>
     </>
   );
 }

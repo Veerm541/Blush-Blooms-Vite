@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import StockPill from '../../components/StockPill.jsx';
 import useCatalog from '../../hooks/useCatalog.js';
+import { peso } from '../../lib/format.js';
 
 function ProductRow({ product, onSave }) {
   const [price, setPrice] = useState(product.price);
@@ -8,10 +9,11 @@ function ProductRow({ product, onSave }) {
   return (
     <tr>
       <td><img src={product.image} alt={product.name} /></td>
-      <td>{product.name}</td>
-      <td>₱<input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></td>
-      <td><input type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} /> <StockPill stock={product.stock} /></td>
-      <td><button className="btn btn-outline" onClick={() => onSave({ price: Number(price), stock: Number(stock) })}>Save</button></td>
+      <td><strong>{product.name}</strong><div className="text-muted tiny-text">Pre-made bouquet</div></td>
+      <td><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></td>
+      <td><input type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} /></td>
+      <td><StockPill stock={Number(stock)} /></td>
+      <td><div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => onSave({ price: Number(price), stock: Number(stock) })}>Save</button><button className="text-action" type="button">Edit details</button></div></td>
     </tr>
   );
 }
@@ -21,42 +23,42 @@ function AssetRow({ asset, onSave }) {
   const [available, setAvailable] = useState(asset.available);
   return (
     <tr>
-      <td>{asset.image ? <img src={asset.image} alt={asset.name} /> : '—'}</td>
-      <td>{asset.name}</td>
-      <td>{asset.type}</td>
-      <td>₱<input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></td>
+      <td>{asset.image ? <img src={asset.image} alt={asset.name} /> : <div className="asset-fallback">{asset.type === 'Wrapper' ? '◇' : asset.type === 'Ribbon' ? '〰' : '✿'}</div>}</td>
+      <td><strong>{asset.name}</strong></td>
+      <td><span className="asset-type-pill">{asset.type}</span></td>
+      <td><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></td>
       <td>
         <select value={String(available)} onChange={e => setAvailable(e.target.value === 'true')}>
           <option value="true">Available</option>
           <option value="false">Hidden</option>
         </select>
       </td>
-      <td><button className="btn btn-outline" onClick={() => onSave({ price: Number(price), available })}>Save</button></td>
+      <td><div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => onSave({ price: Number(price), available })}>Save</button><button className="text-action" type="button">Edit asset</button></div></td>
     </tr>
   );
 }
 
 export default function AdminCatalog() {
   const { products, setProducts, assets, setAssets } = useCatalog();
+  const [tab, setTab] = useState('products');
+  const [assetType, setAssetType] = useState('All');
+  const [query, setQuery] = useState('');
   const patch = (setter, id) => changes => setter(list => list.map(x => (x.id === id ? { ...x, ...changes } : x)));
+
+  const visibleProducts = useMemo(() => products.filter(p => p.name.toLowerCase().includes(query.toLowerCase())), [products, query]);
+  const visibleAssets = useMemo(() => assets.filter(a => (assetType === 'All' || a.type === assetType) && a.name.toLowerCase().includes(query.toLowerCase())), [assets, assetType, query]);
 
   const addProduct = e => {
     e.preventDefault();
     const d = new FormData(e.currentTarget);
-    setProducts(l => [...l, {
-      id: 'p-' + Date.now(), name: d.get('name'), price: Number(d.get('price')), stock: Number(d.get('stock')),
-      image: d.get('image') || '/images/bouquet-signature.jpg',
-    }]);
+    setProducts(l => [...l, { id: 'p-' + Date.now(), name: d.get('name'), price: Number(d.get('price')), stock: Number(d.get('stock')), image: d.get('image') || '/images/bouquet-signature.jpg' }]);
     e.currentTarget.reset();
   };
 
   const addAsset = e => {
     e.preventDefault();
     const d = new FormData(e.currentTarget);
-    setAssets(l => [...l, {
-      id: 'a-' + Date.now(), name: d.get('name'), type: d.get('type'), price: Number(d.get('price')),
-      available: true, image: d.get('image') || '',
-    }]);
+    setAssets(l => [...l, { id: 'a-' + Date.now(), name: d.get('name'), type: d.get('type'), price: Number(d.get('price')), available: true, image: d.get('image') || '' }]);
     e.currentTarget.reset();
   };
 
@@ -64,51 +66,52 @@ export default function AdminCatalog() {
     <>
       <div className="admin-topbar">
         <div>
-          <h1>Catalog &amp; asset management</h1>
-          <p>Update the pre-made bouquet catalog and the 2D stickers (flowers, wrappers, ribbons) used in the customizer.</p>
+          <div className="admin-kicker">Store inventory</div>
+          <h1>Catalog &amp; assets</h1>
+          <p>Manage pre-made bouquets and the flower, wrapper, and ribbon assets used in the 2D customizer.</p>
+        </div>
+        <div className="catalog-summary-chips">
+          <span>{products.length} bouquets</span><span>{assets.length} customizer assets</span><span>{products.filter(p => p.stock <= 5).length} low stock</span>
         </div>
       </div>
 
-      <div className="admin-panel">
-        <div className="admin-panel-head"><h2>Pre-made bouquets</h2></div>
-        <table className="admin-table">
-          <thead><tr><th></th><th>Name</th><th>Price</th><th>Stock</th><th></th></tr></thead>
-          <tbody>
-            {products.map(p => (
-              <ProductRow key={`${p.id}-${p.price}-${p.stock}`} product={p} onSave={patch(setProducts, p.id)} />
-            ))}
-          </tbody>
-        </table>
-        <form className="mini-form" onSubmit={addProduct}>
-          <div className="field"><label htmlFor="pName">New bouquet name</label><input type="text" id="pName" name="name" required /></div>
-          <div className="field"><label htmlFor="pPrice">Price</label><input type="number" id="pPrice" name="price" min="0" required /></div>
-          <div className="field"><label htmlFor="pStock">Stock</label><input type="number" id="pStock" name="stock" min="0" required /></div>
-          <div className="field"><label htmlFor="pImage">Image path (optional)</label><input type="text" id="pImage" name="image" placeholder="/images/..." /></div>
-          <button className="btn btn-dark" type="submit">Add bouquet</button>
-        </form>
+      <div className="admin-tabs">
+        <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>Pre-made bouquets</button>
+        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>2D customizer assets</button>
       </div>
 
-      <div className="admin-panel">
-        <div className="admin-panel-head"><h2>2D sticker assets (flowers, wrappers, ribbons)</h2></div>
-        <table className="admin-table">
-          <thead><tr><th></th><th>Name</th><th>Type</th><th>Price</th><th>Visibility</th><th></th></tr></thead>
-          <tbody>
-            {assets.map(a => (
-              <AssetRow key={`${a.id}-${a.price}-${a.available}`} asset={a} onSave={patch(setAssets, a.id)} />
-            ))}
-          </tbody>
-        </table>
-        <form className="mini-form" onSubmit={addAsset}>
-          <div className="field"><label htmlFor="aName">New asset name</label><input type="text" id="aName" name="name" required /></div>
-          <div className="field">
-            <label htmlFor="aType">Type</label>
-            <select id="aType" name="type"><option>Flower</option><option>Wrapper</option><option>Ribbon</option></select>
-          </div>
-          <div className="field"><label htmlFor="aPrice">Price</label><input type="number" id="aPrice" name="price" min="0" required /></div>
-          <div className="field"><label htmlFor="aImage">Image URL (optional)</label><input type="text" id="aImage" name="image" placeholder="https://..." /></div>
-          <button className="btn btn-dark" type="submit">Add asset</button>
-        </form>
+      <div className="catalog-toolbar admin-panel">
+        <div className="admin-search-field"><label htmlFor="catalogSearch">Search catalog</label><input id="catalogSearch" type="search" placeholder="Search by name" value={query} onChange={e => setQuery(e.target.value)} /></div>
+        {tab === 'assets' && <div className="field"><label htmlFor="assetTypeFilter">Asset type</label><select id="assetTypeFilter" value={assetType} onChange={e => setAssetType(e.target.value)}><option>All</option><option>Flower</option><option>Wrapper</option><option>Ribbon</option></select></div>}
       </div>
+
+      {tab === 'products' ? (
+        <div className="admin-panel">
+          <div className="admin-panel-head"><div><h2>Pre-made bouquets</h2><p className="panel-subtitle">Update prices, stock levels, and product details shown on the storefront.</p></div></div>
+          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Product</th><th>Price (₱)</th><th>Stock</th><th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleProducts.map(p => <ProductRow key={`${p.id}-${p.price}-${p.stock}`} product={p} onSave={patch(setProducts, p.id)} />)}</tbody></table></div>
+          <form className="mini-form expanded-mini-form" onSubmit={addProduct}>
+            <div className="mini-form-title"><strong>Add pre-made bouquet</strong><span>Create a new catalog item for the customer storefront.</span></div>
+            <div className="field"><label htmlFor="pName">Bouquet name</label><input type="text" id="pName" name="name" required /></div>
+            <div className="field"><label htmlFor="pPrice">Price</label><input type="number" id="pPrice" name="price" min="0" required /></div>
+            <div className="field"><label htmlFor="pStock">Stock</label><input type="number" id="pStock" name="stock" min="0" required /></div>
+            <div className="field"><label htmlFor="pImage">Image path</label><input type="text" id="pImage" name="image" placeholder="/images/..." /></div>
+            <button className="btn btn-dark btn-sm" type="submit">Add bouquet</button>
+          </form>
+        </div>
+      ) : (
+        <div className="admin-panel">
+          <div className="admin-panel-head"><div><h2>2D sticker assets</h2><p className="panel-subtitle">Manage flowers, wrappers, ribbons, prices, and customer-facing availability.</p></div></div>
+          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Asset</th><th>Type</th><th>Price (₱)</th><th>Visibility</th><th>Actions</th></tr></thead><tbody>{visibleAssets.map(a => <AssetRow key={`${a.id}-${a.price}-${a.available}`} asset={a} onSave={patch(setAssets, a.id)} />)}</tbody></table></div>
+          <form className="mini-form expanded-mini-form" onSubmit={addAsset}>
+            <div className="mini-form-title"><strong>Add customizer asset</strong><span>Add another flower, wrapper, or ribbon option.</span></div>
+            <div className="field"><label htmlFor="aName">Asset name</label><input type="text" id="aName" name="name" required /></div>
+            <div className="field"><label htmlFor="aType">Type</label><select id="aType" name="type"><option>Flower</option><option>Wrapper</option><option>Ribbon</option></select></div>
+            <div className="field"><label htmlFor="aPrice">Price</label><input type="number" id="aPrice" name="price" min="0" required /></div>
+            <div className="field"><label htmlFor="aImage">Image URL/path</label><input type="text" id="aImage" name="image" placeholder="https://... or /images/..." /></div>
+            <button className="btn btn-dark btn-sm" type="submit">Add asset</button>
+          </form>
+        </div>
+      )}
     </>
   );
 }
