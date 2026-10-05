@@ -251,10 +251,8 @@ src/
 │   ├── Layout
 │   ├── CartDrawer
 │   ├── forms
-│   ├── Stat
-│   ├── Testimonials
 │   ├── FaqItem
-│   ├── pills
+│   ├── Pills
 │   └── router helpers
 │
 ├── context/

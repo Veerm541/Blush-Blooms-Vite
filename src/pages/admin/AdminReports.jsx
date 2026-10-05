@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import StatusPill from '../../components/StatusPill.jsx';
+import { StatusPill } from '../../components/Pills.jsx';
 import useOrders from '../../hooks/useOrders.js';
 import { ORDER_STATUSES, getFulfillmentMethod, getPaymentMethodLabel, peso } from '../../lib/format.js';
 

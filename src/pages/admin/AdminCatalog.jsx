@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import StockPill from '../../components/StockPill.jsx';
+import { StockPill } from '../../components/Pills.jsx';
 import useCatalog from '../../hooks/useCatalog.js';
 import { peso } from '../../lib/format.js';
 

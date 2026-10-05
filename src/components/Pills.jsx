@@ -1,4 +1,10 @@
-export default function StockPill({ stock }) {
+import { statusClass } from '../lib/format.js';
+
+export function StatusPill({ status }) {
+  return <span className={`status-pill ${statusClass(status)}`}>{status}</span>;
+}
+
+export function StockPill({ stock }) {
   if (stock <= 0) return <span className="stock-pill out">Out of stock</span>;
   if (stock <= 5) return <span className="stock-pill low">Low stock · {stock}</span>;
   return <span className="stock-pill in">In stock · {stock}</span>;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import A from '../components/A.jsx';
-import StatusPill from '../components/StatusPill.jsx';
+import { StatusPill } from '../components/Pills.jsx';
 import { readJSON } from '../hooks/useLocalStorage.js';
 import { ORDERS_KEY } from '../hooks/useOrders.js';
 import { getFulfillmentMethod, getOrderStatuses, getPaymentMethodLabel, peso } from '../lib/format.js';

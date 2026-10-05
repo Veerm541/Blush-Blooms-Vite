@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
-import StatusPill from '../../components/StatusPill.jsx';
-import StockPill from '../../components/StockPill.jsx';
+import { StatusPill, StockPill } from '../../components/Pills.jsx';
 import useCatalog from '../../hooks/useCatalog.js';
 import useOrders from '../../hooks/useOrders.js';
 import { getFulfillmentMethod, getPaymentMethodLabel, peso } from '../../lib/format.js';
