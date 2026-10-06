@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { StatusPill } from '../../components/Pills.jsx';
 import useOrders from '../../hooks/useOrders.js';
+import OrderInvoice from '../../components/OrderInvoice.jsx';
 import {
   ORDER_STATUSES,
   getFulfillmentMethod,
@@ -200,6 +201,7 @@ export default function AdminOrders() {
                               <div>
                                 <strong>Itemized components</strong>
                                 <p className="text-muted">{stems || '—'}</p>
+                                {o.items.filter(i => typeof i.includeFillers === 'boolean').map((i, index) => <p key={index}><strong>{i.name}:</strong> {i.includeFillers ? 'Add fillers — florist chooses the final touches.' : 'No fillers requested.'}</p>)}
                                 {o.dedication && <><strong>Dedication card</strong><p className="text-muted">“{o.dedication}”</p></>}
                               </div>
                               <div>
@@ -207,6 +209,8 @@ export default function AdminOrders() {
                               </div>
                             </div>
                           </div>
+
+                          <OrderInvoice order={o} />
 
                           <div className="order-detail-section wide">
                             <div className="detail-section-head"><span>04</span><div><strong>Fulfillment controls</strong><small>Update order progress and record internal notes</small></div></div>

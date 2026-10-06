@@ -2,23 +2,24 @@ import { useMemo, useState } from 'react';
 import { StockPill } from '../../components/Pills.jsx';
 import useCatalog from '../../hooks/useCatalog.js';
 import { peso } from '../../lib/format.js';
+import CatalogEditor from '../../components/CatalogEditor.jsx';
 
-function ProductRow({ product, onSave }) {
+function ProductRow({ product, onSave, onEdit }) {
   const [price, setPrice] = useState(product.price);
   const [stock, setStock] = useState(product.stock);
   return (
     <tr>
-      <td><img src={product.image} alt={product.name} /></td>
-      <td><strong>{product.name}</strong><div className="text-muted tiny-text">Pre-made bouquet</div></td>
+      <td>{product.image ? <img src={product.image} alt={product.name} /> : <div className="asset-fallback">✿</div>}</td>
+      <td><strong>{product.name}</strong><div className="text-muted tiny-text">{product.category === 'add-on' ? 'Add-on' : 'Pre-made bouquet'}</div></td>
       <td><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></td>
       <td><input type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} /></td>
       <td><StockPill stock={Number(stock)} /></td>
-      <td><div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => onSave({ price: Number(price), stock: Number(stock) })}>Save</button><button className="text-action" type="button">Edit details</button></div></td>
+      <td><div className="row-actions"><button className="btn btn-outline btn-sm" disabled={price === '' || stock === '' || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0} onClick={() => onSave({ price: Number(price), stock: Number(stock) })}>Save</button><button className="text-action" type="button" onClick={onEdit}>Edit details</button></div></td>
     </tr>
   );
 }
 
-function AssetRow({ asset, onSave }) {
+function AssetRow({ asset, onSave, onEdit }) {
   const [price, setPrice] = useState(asset.price);
   const [available, setAvailable] = useState(asset.available);
   return (
@@ -33,7 +34,7 @@ function AssetRow({ asset, onSave }) {
           <option value="false">Hidden</option>
         </select>
       </td>
-      <td><div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => onSave({ price: Number(price), available })}>Save</button><button className="text-action" type="button">Edit asset</button></div></td>
+      <td><div className="row-actions"><button className="btn btn-outline btn-sm" disabled={price === '' || !Number.isFinite(Number(price)) || Number(price) < 0} onClick={() => onSave({ price: Number(price), available })}>Save</button><button className="text-action" type="button" onClick={onEdit}>Edit asset</button></div></td>
     </tr>
   );
 }
@@ -43,7 +44,9 @@ export default function AdminCatalog() {
   const [tab, setTab] = useState('products');
   const [assetType, setAssetType] = useState('All');
   const [query, setQuery] = useState('');
-  const patch = (setter, id) => changes => setter(list => list.map(x => (x.id === id ? { ...x, ...changes } : x)));
+  const [editing, setEditing] = useState(null);
+  const [notice, setNotice] = useState('');
+  const patch = (setter, id) => changes => { setter(list => list.map(x => (x.id === id ? { ...x, ...changes } : x))); setNotice('Catalog changes saved.'); };
 
   const visibleProducts = useMemo(() => products.filter(p => p.name.toLowerCase().includes(query.toLowerCase())), [products, query]);
   const visibleAssets = useMemo(() => assets.filter(a => (assetType === 'All' || a.type === assetType) && a.name.toLowerCase().includes(query.toLowerCase())), [assets, assetType, query]);
@@ -51,7 +54,9 @@ export default function AdminCatalog() {
   const addProduct = e => {
     e.preventDefault();
     const d = new FormData(e.currentTarget);
-    setProducts(l => [...l, { id: 'p-' + Date.now(), name: d.get('name'), price: Number(d.get('price')), stock: Number(d.get('stock')), image: d.get('image') || '/images/bouquet-signature.jpg' }]);
+    if (!String(d.get('name')).trim()) return;
+    setProducts(l => [...l, { id: 'p-' + Date.now(), name: String(d.get('name')).trim(), category: 'bouquet', desc: '', price: Number(d.get('price')), stock: Number(d.get('stock')), image: d.get('image') || '/images/bouquet-signature.jpg' }]);
+    setNotice('Bouquet added.');
     e.currentTarget.reset();
   };
 
@@ -59,6 +64,7 @@ export default function AdminCatalog() {
     e.preventDefault();
     const d = new FormData(e.currentTarget);
     setAssets(l => [...l, { id: 'a-' + Date.now(), name: d.get('name'), type: d.get('type'), price: Number(d.get('price')), available: true, image: d.get('image') || '' }]);
+    setNotice('Asset added.');
     e.currentTarget.reset();
   };
 
@@ -79,6 +85,8 @@ export default function AdminCatalog() {
         <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>Pre-made bouquets</button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>2D customizer assets</button>
       </div>
+      {notice && <p className="catalog-save-notice" role="status">{notice}</p>}
+      {editing && <CatalogEditor item={editing.item} kind={editing.kind} onClose={() => setEditing(null)} onSave={changes => { patch(editing.kind === 'products' ? setProducts : setAssets, editing.item.id)(changes); setEditing(null); }} />}
 
       <div className="catalog-toolbar admin-panel">
         <div className="admin-search-field"><label htmlFor="catalogSearch">Search catalog</label><input id="catalogSearch" type="search" placeholder="Search by name" value={query} onChange={e => setQuery(e.target.value)} /></div>
@@ -88,7 +96,7 @@ export default function AdminCatalog() {
       {tab === 'products' ? (
         <div className="admin-panel">
           <div className="admin-panel-head"><div><h2>Pre-made bouquets</h2><p className="panel-subtitle">Update prices, stock levels, and product details shown on the storefront.</p></div></div>
-          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Product</th><th>Price (₱)</th><th>Stock</th><th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleProducts.map(p => <ProductRow key={`${p.id}-${p.price}-${p.stock}`} product={p} onSave={patch(setProducts, p.id)} />)}</tbody></table></div>
+          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Product</th><th>Price (₱)</th><th>Stock</th><th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleProducts.map(p => <ProductRow key={`${p.id}-${p.price}-${p.stock}`} product={p} onSave={patch(setProducts, p.id)} onEdit={() => setEditing({ item: p, kind: 'products' })} />)}</tbody></table></div>
           <form className="mini-form expanded-mini-form" onSubmit={addProduct}>
             <div className="mini-form-title"><strong>Add pre-made bouquet</strong><span>Create a new catalog item for the customer storefront.</span></div>
             <div className="field"><label htmlFor="pName">Bouquet name</label><input type="text" id="pName" name="name" required /></div>
@@ -101,7 +109,7 @@ export default function AdminCatalog() {
       ) : (
         <div className="admin-panel">
           <div className="admin-panel-head"><div><h2>2D sticker assets</h2><p className="panel-subtitle">Manage flowers, wrappers, ribbons, prices, and customer-facing availability.</p></div></div>
-          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Asset</th><th>Type</th><th>Price (₱)</th><th>Visibility</th><th>Actions</th></tr></thead><tbody>{visibleAssets.map(a => <AssetRow key={`${a.id}-${a.price}-${a.available}`} asset={a} onSave={patch(setAssets, a.id)} />)}</tbody></table></div>
+          <div className="table-scroll"><table className="admin-table"><thead><tr><th></th><th>Asset</th><th>Type</th><th>Price (₱)</th><th>Visibility</th><th>Actions</th></tr></thead><tbody>{visibleAssets.map(a => <AssetRow key={`${a.id}-${a.price}-${a.available}`} asset={a} onSave={patch(setAssets, a.id)} onEdit={() => setEditing({ item: a, kind: 'assets' })} />)}</tbody></table></div>
           <form className="mini-form expanded-mini-form" onSubmit={addAsset}>
             <div className="mini-form-title"><strong>Add customizer asset</strong><span>Add another flower, wrapper, or ribbon option.</span></div>
             <div className="field"><label htmlFor="aName">Asset name</label><input type="text" id="aName" name="name" required /></div>

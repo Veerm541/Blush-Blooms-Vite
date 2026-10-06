@@ -44,7 +44,7 @@ Customers can:
 - View product details and prices
 - Add products to the shopping bag
 - Create customized bouquets using the 2D bouquet customizer
-- Add flowers, fillers, greenery, wrappers, and ribbons
+- Add flowers, wrappers, and ribbons; request florist-selected fillers separately
 - Move, resize, rotate, flip, copy, and remove bouquet elements
 - Select Small, Medium, or Large bouquet guides
 - View real-time bouquet pricing
@@ -69,10 +69,10 @@ The bouquet customizer is the main interactive feature of the system.
 Customers can build floral arrangements using:
 
 - Flowers
-- Fillers
-- Greenery
 - Wrappers
 - Ribbons
+
+Fillers are a Yes/No preference. The florist supplies the final filler touches rather than customers placing them on the canvas.
 
 Available controls include:
 
@@ -87,6 +87,10 @@ Available controls include:
 - Clear all
 - Undo
 - Redo
+
+Bouquet flower limits are temporary: **Small 6**, **Medium 12**, **Large 18**. They are defined in `src/lib/bouquet.js` and apply to adding, copying/pasting, duplicating, and undo/redo. Wrappers and ribbons do not count toward the flower limit. Size changes preserve the design and reject a smaller size when too many flowers are present.
+
+On mobile, open a parts category and swipe the parts list sideways. The design canvas fits the screen and supports touch dragging, resizing, and rotating. The order summary retains the filler preference for the florist.
 
 ### Keyboard Shortcuts
 
@@ -199,7 +203,8 @@ Authorized staff can:
 - View order items
 - View customized bouquet details
 - View bouquet snapshots
-- View itemized floral components
+- View itemized floral components and filler preferences
+- View an invoice inside order details and print it or save it as PDF
 - Review GCash payment proof
 - Approve or reject payment verification
 - Update fulfillment status
@@ -212,14 +217,14 @@ Admins can manage:
 
 - Pre-made bouquets
 - Flowers
-- Fillers
-- Greenery
 - Wrappers
 - Ribbons
 - Product prices
 - Asset prices
 - Stock quantities
 - Availability status
+
+The detail editor saves names, descriptions, prices, stock, categories, images, and availability in browser storage. Storefront and customizer views use this saved catalog. Existing saved catalog identities are preserved through alias migration.
 
 ### Reports
 
@@ -236,7 +241,7 @@ The reporting interface includes:
 - Date filtering
 - Print and Export interface
 
-Some reporting controls are currently UI placeholders while backend functionality is still being developed.
+Reports support year selection starting in 2026, all 12 months, inclusive date ranges in Philippine time, filtered CSV export, and printing. Cancelled orders are excluded from revenue. Data still comes from browser storage.
 
 ---
 
@@ -368,3 +373,12 @@ The goal of Blush Blooms is to provide customers with a simple and visually unde
 
 The **2D Drag-and-Drop Bouquet Customizer** is the main feature of the system and is designed to allow customers to visually create their own floral arrangement before submitting an order.
 ```
+
+## Validation
+
+```bash
+npm test
+npm run build
+```
+
+The tests cover Philippine date boundaries, period filtering, cancelled-order revenue, CSV escaping, bouquet limits, and edited artwork. Browser interactions were also checked with Chromium at widths from 320 to 1440 pixels.
