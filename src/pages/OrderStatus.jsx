@@ -27,6 +27,8 @@ export default function OrderStatus() {
   const schedule = fulfillmentMethod === 'Delivery'
     ? `${fulfillment.deliveryDate || '—'} · ${fulfillment.deliveryTimeSlot || '—'}`
     : formatPickup(order);
+  const confirmed = order?.confirmedSchedule;
+  const confirmedText = confirmed ? (fulfillmentMethod === 'Delivery' ? `${confirmed.date || '—'} · ${confirmed.slot || '—'}` : (confirmed.time ? new Date(confirmed.time).toLocaleString() : '—')) : '';
 
   return (
     <>
@@ -41,7 +43,7 @@ export default function OrderStatus() {
 
             <div className="tracking-summary-grid">
               <div><span>Fulfillment</span><strong>{fulfillmentMethod}</strong></div>
-              <div><span>Schedule</span><strong>{schedule}</strong></div>
+              <div><span>{confirmedText ? 'Confirmed schedule' : 'Preferred schedule'}</span><strong>{confirmedText || schedule}</strong>{confirmedText && <small className="text-muted">Agreed with the shop. You asked for {schedule}.</small>}</div>
               <div><span>Payment</span><strong>{getPaymentMethodLabel(order)}</strong></div>
               <div><span>Payment check</span><strong>{paymentVerification}</strong></div>
             </div>

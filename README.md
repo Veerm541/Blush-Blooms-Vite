@@ -204,7 +204,7 @@ Authorized staff can:
 - View customized bouquet details
 - View bouquet snapshots
 - View itemized floral components and filler preferences
-- View an invoice inside order details and print it or save it as PDF
+- Open an order invoice from the Invoice button (separate from View details) and print it or save it as PDF
 - Review GCash payment proof
 - Approve or reject payment verification
 - Update fulfillment status

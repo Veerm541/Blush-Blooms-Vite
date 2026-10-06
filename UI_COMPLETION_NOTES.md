@@ -78,3 +78,9 @@ The interaction remains implemented with React DOM positioning in this UI protot
 - Made filters horizontally scrollable on narrow phones and the sort control full-width when needed.
 - Made product modal actions responsive and easier to tap.
 - Added consistent focus, hover, active, and minimum touch-target behavior to common buttons without changing their existing functions.
+
+## v9 Customizer clarity + admin invoice pass
+- Customizer steps are now numbered 1 (Pick your parts), 2 (Arrange), 3 (Review & order); the edit bar sticks under the canvas while a piece is selected.
+- Parts tabs are three equal buttons with a count of what is already in the bouquet; part cards show "In use" / "× n".
+- Phones and tablets get a fixed bar with the total and "Add to bag".
+- Admin Orders: the invoice no longer sits inside View details. Each row has an Invoice button that opens it in a window (Esc or outside click closes; Print / Save PDF still works).

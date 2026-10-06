@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCart } from '../context/CartContext.jsx';
+import AssetPreview from '../components/AssetPreview.jsx';
 import { peso } from '../lib/format.js';
 import { CUSTOMIZER_PALETTES } from '../data/customizerAssets.js';
 import useCatalog from '../hooks/useCatalog.js';
@@ -856,9 +857,9 @@ export default function Customize() {
       </section>
 
       <section className="section customizer-section">
-        <div className="container builder customizer-builder">
+        <div className={`container builder customizer-builder${selectedIds.length ? ' has-selection' : ''}${trayOpen ? ' tray-open' : ''}`}>
           <aside className={`palette customizer-palette${trayOpen ? ' is-open' : ''}`} ref={paletteRef}>
-            <div className="parts-tray-heading"><div><div className="eyebrow">Bouquet parts</div><h3>Choose what to add</h3></div><button className="parts-toggle" type="button" aria-expanded={trayOpen} aria-controls="bouquetParts" onClick={() => setTrayOpen(open => !open)}>{trayOpen ? 'Close parts' : 'Open parts'} <span aria-hidden="true">{trayOpen ? '⌄' : '⌃'}</span></button></div>
+            <div className="parts-tray-heading"><div><div className="eyebrow">Step 1</div><h3>Pick your parts</h3></div><button className="parts-toggle" type="button" aria-expanded={trayOpen} aria-controls="bouquetParts" onClick={() => setTrayOpen(open => !open)}>{trayOpen ? 'Close parts' : 'Open parts'} <span aria-hidden="true">{trayOpen ? '⌄' : '⌃'}</span></button></div>
             <p className="customizer-readable-copy">Tap an item to place it in the bouquet. On a computer, you can also drag it into the middle.</p>
 
             <div className="palette-tabs customizer-tabs" role="tablist" aria-label="Bouquet parts">
@@ -871,28 +872,35 @@ export default function Customize() {
                   role="tab" aria-controls="bouquetParts" aria-selected={palette === key}
                 >
                   {PALETTE_LABELS[key]}
+                  {elements.some(e => e.type === key) && <span className="tab-count">{elements.filter(e => e.type === key).length}</span>}
                 </button>
               ))}
             </div>
 
             <div id="bouquetParts" className="flower-list customizer-item-list" role="tabpanel" aria-label={PALETTE_LABELS[palette]} hidden={!trayOpen}>
-              {palettes[palette].map(item => (
+              {palettes[palette].map(item => {
+                const used = item.type === 'Wrapper'
+                  ? elements.some(e => e.type === 'Wrapper' && e.id === item.id) ? 1 : 0
+                  : elements.filter(e => e.id === item.id).length;
+                return (
                 <button
                   key={item.id}
                   type="button"
-                  className="flower-token customizer-item-card"
+                  className={`flower-token customizer-item-card${used ? ' is-used' : ''}`}
                   disabled={item.type === 'Flower' && flowers >= capacity}
                   draggable
                   onDragStart={event => event.dataTransfer.setData('text/plain', JSON.stringify({ id: item.id }))}
                   onClick={() => add(item)}
                 >
-                  <span className="customizer-item-visual"><img src={item.image} alt="" /></span>
+                  {used > 0 && <span className="item-badge">{item.type === 'Wrapper' ? 'In use' : `× ${used}`}</span>}
+                  <span className="customizer-item-visual"><AssetPreview art={item} label="" /></span>
                   <span className="customizer-item-name">{item.name}</span>
                   <span className="customizer-item-meta">
                     {peso(item.price)} · {item.type === 'Flower' && flowers >= capacity ? 'Limit reached' : item.type === 'Wrapper' && hasWrapper ? 'Tap to switch' : 'Tap to add'}
                   </span>
                 </button>
-              ))}
+                );
+              })}
               {!palettes[palette].length && <p className="text-muted">No {PALETTE_LABELS[palette].toLowerCase()} available at the moment.</p>}
             </div>
           </aside>
@@ -907,14 +915,14 @@ export default function Customize() {
               <div className="customizer-top-controls">
                 <label className="snap-toggle customizer-snap-toggle">
                   <input type="checkbox" checked={guidesOn} onChange={event => setGuidesOn(event.target.checked)} />
-                  Show guide & center snapping
+                  Show size guide
                 </label>
               </div>
             </div>
 
             <div className="size-choice-block">
               <div className="size-choice-copy">
-                <strong>Choose bouquet size</strong>
+                <strong>Bouquet size</strong>
                 <span>Size sets your flower limit. Wrappers and ribbons do not count toward it.</span>
               </div>
               <div className="size-presets customizer-size-presets" role="group" aria-label="Bouquet size">
@@ -940,6 +948,32 @@ export default function Customize() {
                   <button type="button" aria-label="Paste" onClick={pasteClipboard} disabled={!clipboardCount} title="Paste (Ctrl+V)">▣ <span>Paste</span></button>
                   <button type="button" aria-label="Clear" className="clear-tool" onClick={clearCanvas} disabled={!elements.length} title="Clear all objects">× <span>Clear</span></button>
                 </div>
+            <div className="selection-bar" aria-live="polite">
+              <div className="selection-head">
+                <span className={`selection-name${selectedIds.length ? ' has-selection' : ''}`}>
+                  {selectedElement
+                    ? <>Editing <strong>{selectedElement.name}</strong></>
+                    : selectedElements.length > 1
+                      ? <><strong>{selectedElements.length} items</strong> selected</>
+                      : 'Tap a piece on the canvas to edit it'}
+                </span>
+                {selectedIds.length > 0 && <button type="button" className="selection-done" onClick={() => setSelectedIds([])}>Done</button>}
+              </div>
+              <div className="customizer-action-toolbar" role="group" aria-label="Edit selected piece">
+                <button type="button" disabled={!selectedIds.length} onClick={() => act('scale-down')}><span aria-hidden="true">−</span>Smaller</button>
+                <button type="button" disabled={!selectedIds.length} onClick={() => act('scale-up')}><span aria-hidden="true">＋</span>Bigger</button>
+                <button type="button" disabled={!selectedIds.length} onClick={() => act('rotate-left')}><span aria-hidden="true">↶</span>Turn left</button>
+                <button type="button" disabled={!selectedIds.length} onClick={() => act('rotate-right')}><span aria-hidden="true">↷</span>Turn right</button>
+                <button type="button" disabled={!selectedIds.length} onClick={() => act('flip')}><span aria-hidden="true">⇄</span>Flip</button>
+                <button
+                  type="button"
+                  onClick={() => act('duplicate')}
+                  disabled={!selectedIds.length || selectedElements.every(item => item.type === 'Wrapper')}
+                  title={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper') ? 'A bouquet has one wrapper' : 'Duplicate selected item(s)'}
+                ><span aria-hidden="true">⧉</span>Duplicate</button>
+                <button type="button" className="danger" disabled={!selectedIds.length} onClick={() => act('delete')}><span aria-hidden="true">×</span>Remove</button>
+              </div>
+            </div>
             <div className="canvas-status-row"><span className={flowers >= capacity ? 'flower-count at-limit' : 'flower-count'} aria-live="polite">{flowers} / {capacity} flowers</span><span>Tap to select · drag to arrange</span></div>
             {notice && <div className="canvas-notice" role="alert">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice('')}>×</button></div>}
             <div className="canvas-viewport" ref={viewportRef}>
@@ -1050,58 +1084,11 @@ export default function Customize() {
 
             </div>
             <button className="mobile-browse-parts btn btn-outline" type="button" onClick={() => { setTrayOpen(true); requestAnimationFrame(() => paletteRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }}>Open bouquet parts</button>
-            <div className="selected-element-panel" aria-live="polite">
-              <div className="selected-element-heading">
-                <div>
-                  <span className="eyebrow">Step 3</span>
-                  <strong>
-                    {selectedElement
-                      ? `Selected: ${selectedElement.name}`
-                      : selectedElements.length > 1
-                        ? `${selectedElements.length} items selected`
-                        : 'Tap an item or drag a box to select'}
-                  </strong>
-                </div>
-                {selectedElement && <span className="selected-element-type">{PALETTE_LABELS[selectedElement.type] || selectedElement.type}</span>}
-                {selectedElements.length > 1 && <span className="selected-element-type">Multiple items</span>}
-              </div>
-
-              {selectedIds.length > 0 && (
-                <div className="selected-drag-hint">
-                  <span className="selected-drag-hint-icon" aria-hidden="true">⠿</span>
-                  <div>
-                    <strong>Need to move it?</strong>
-                    <p>Hold the pink <b>Drag to move</b> handle on the selected item, then drag it anywhere inside the bouquet.</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flower-toolbar customizer-action-toolbar" hidden={!selectedIds.length}>
-                <button type="button" onClick={() => act('rotate-left')}><span aria-hidden="true">↶</span>Turn left</button>
-                <button type="button" onClick={() => act('rotate-right')}><span aria-hidden="true">↷</span>Turn right</button>
-                <button type="button" onClick={() => act('scale-down')}><span aria-hidden="true">−</span>Smaller</button>
-                <button type="button" onClick={() => act('scale-up')}><span aria-hidden="true">＋</span>Bigger</button>
-                <button type="button" onClick={() => act('flip')}><span aria-hidden="true">⇄</span>Flip</button>
-                <button
-                  type="button"
-                  onClick={() => act('duplicate')}
-                  disabled={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper')}
-                  title={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper') ? 'A bouquet has one wrapper' : 'Duplicate selected item(s)'}
-                ><span aria-hidden="true">⧉</span>Duplicate</button>
-                <button type="button" className="danger" onClick={() => act('delete')}><span aria-hidden="true">×</span>Remove</button>
-              </div>
-
-              {!selectedIds.length && (
-                <p className="selected-element-empty">
-                  Tap a flower, wrapper, or ribbon to edit it. Use the pink handle to move your selection. On a computer, drag an empty area to select several pieces.
-                </p>
-              )}
-            </div>
           </section>
 
-          <aside className="builder-summary customizer-summary">
-            <div className="eyebrow">Your bouquet</div>
-            <h3>Order summary</h3>
+          <aside id="bouquetSummary" className="builder-summary customizer-summary">
+            <div className="eyebrow">Step 3</div>
+            <h3>Review &amp; order</h3>
             <div className="summary-size-row"><span>Size</span><strong>{size}</strong></div>
 
             <div className="builder-items customizer-summary-items">
@@ -1133,6 +1120,11 @@ export default function Customize() {
           </aside>
         </div>
       </section>
+
+      <div className="customizer-mobile-bar" role="region" aria-label="Bouquet total">
+        <div><strong>{peso(total)}</strong><span>{flowers} / {capacity} flowers · {size}</span></div>
+        <button className="btn btn-dark" type="button" disabled={!flowers} onClick={() => document.getElementById('bouquetSummary')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Review &amp; add</button>
+      </div>
     </>
   );
 }

@@ -281,14 +281,68 @@ const make = (def, svg, extra = {}) => {
   };
 };
 
-const flower = (def, opts) => make({ type: 'Flower', ...def }, flowerSvg(opts));
+const flower = (def, opts) => make({ type: 'Flower', design: { style: 'rose', petals: '#ef9da9', center: '#8b5d45', stem: '#65845f', ...opts }, ...def }, flowerSvg(opts));
 const filler = (def, opts) => make({ type: 'Filler', ...def }, fillerSvg(opts));
 const greenery = (def, opts) => make({ type: 'Greenery', ...def }, greenerySvg(opts));
-const ribbon = (def, opts) => make({ type: 'Ribbon', ...def }, ribbonSvg(opts));
+const ribbon = (def, opts) => make({ type: 'Ribbon', design: { style: 'bow', color: '#c96f7f', shade: '#8f4052', ...opts }, ...def }, ribbonSvg(opts));
 const wrapper = (def, colors) => {
   const { back, front } = wrapperLayers(colors);
-  return make({ type: 'Wrapper', ...def }, front, { imageBack: svgData(fit(back, def.id)), svgBack: fit(back, def.id) });
+  return make({ type: 'Wrapper', design: { ...colors }, ...def }, front, { imageBack: svgData(fit(back, def.id)), svgBack: fit(back, def.id) });
 };
+
+
+/* ------------------------------------------------------------------ *
+ * Designable elements. Flowers, wrappers and ribbons are DRAWN from a small
+ * design (style + colours) — the admin never uploads a picture for them.
+ * ------------------------------------------------------------------ */
+export const FLOWER_STYLES = [
+  { id: 'rose', label: 'Rose', center: false },
+  { id: 'tulip', label: 'Tulip', center: false },
+  { id: 'sunflower', label: 'Sunflower', center: true },
+  { id: 'lily', label: 'Lily', center: false },
+  { id: 'carnation', label: 'Carnation', center: false },
+  { id: 'gerbera', label: 'Gerbera', center: true },
+];
+export const RIBBON_STYLES = [{ id: 'bow', label: 'Bow' }, { id: 'long', label: 'Long tails' }];
+export const DEFAULT_DESIGNS = {
+  Flower: { style: 'rose', petals: '#ef9ba8', center: '#8b5d45', stem: '#65845f' },
+  Ribbon: { style: 'bow', color: '#e99aa8', shade: '#b85f72' },
+  Wrapper: { a: '#e8689f', b: '#f6b3d0', edge: '#b83a78' },
+};
+const STYLE_BOX = { rose: 'rose-stem', tulip: 'tulip-stem', sunflower: 'sunflower-stem', lily: 'lily-stem', carnation: 'carnation-stem', gerbera: 'gerbera-stem' };
+const RIBBON_BOX = { bow: 'blush-ribbon', long: 'cream-ribbon' };
+const HEX = /^#[0-9a-f]{6}$/i;
+
+// Lightens (toward #ffffff) or darkens (toward #000000) a #rrggbb colour.
+export const mixHex = (hex, toward, amount) => {
+  const from = parseInt((HEX.test(hex) ? hex : '#888888').slice(1), 16);
+  const to = toward === 'white' ? 255 : 0;
+  const ch = shift => Math.round(((from >> shift) & 255) * (1 - amount) + to * amount);
+  return `#${[16, 8, 0].map(shift => ch(shift).toString(16).padStart(2, '0')).join('')}`;
+};
+
+const art = (type, boxId, svg) => {
+  const box = BOX[boxId] || { w: 180, h: 260 };
+  const fitted = fit(svg, boxId);
+  return { svg: fitted, image: svgData(fitted), width: Math.round(box.w * SCALE[type]), height: Math.round(box.h * SCALE[type]) };
+};
+
+export function buildArtwork(type, design = {}) {
+  const base = DEFAULT_DESIGNS[type] || DEFAULT_DESIGNS.Flower;
+  const d = { ...base };
+  Object.keys(base).forEach(key => {
+    const value = design?.[key];
+    if (key === 'style') d.style = typeof value === 'string' && /^[a-z]+$/.test(value) ? value : base.style;
+    else d[key] = HEX.test(value) ? value : base[key];      // colours are validated before they touch the SVG markup
+  });
+  if (type === 'Wrapper') {
+    const { back, front } = wrapperLayers(d);
+    const backFit = fit(back, 'pink-wrap');
+    return { ...art('Wrapper', 'pink-wrap', front), svgBack: backFit, imageBack: svgData(backFit) };
+  }
+  if (type === 'Ribbon') return art('Ribbon', RIBBON_BOX[d.style] || 'blush-ribbon', ribbonSvg({ color: d.color, shade: d.shade, style: d.style }));
+  return art('Flower', STYLE_BOX[d.style] || 'rose-stem', flowerSvg({ petals: d.petals, center: d.center, stem: d.stem, style: d.style }));
+}
 
 // Wrapper colours follow the real wraps sold in the shop (pink, royal blue, black & grey, kraft & cream).
 const WRAPPERS = [

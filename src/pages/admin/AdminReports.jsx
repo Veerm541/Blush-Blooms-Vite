@@ -1,13 +1,23 @@
 import { useRef, useState } from 'react';
 import { StatusPill } from '../../components/Pills.jsx';
 import useOrders from '../../hooks/useOrders.js';
-import { ORDER_STATUSES, getFulfillmentMethod, getPaymentMethodLabel, peso } from '../../lib/format.js';
+import { ORDER_STATUSES, getFulfillmentMethod, getPaymentMethodLabel, peso, statusClass } from '../../lib/format.js';
 import { MONTHS, csvCell, filterOrders, orderDate, orderRevenue, salesOrders } from '../../lib/reports.js';
 import { printSection } from '../../lib/print.js';
 
 function Bars({ rows }) {
   const max = Math.max(1, ...rows.map(r => r.value));
-  return <div className="report-bars">{rows.map(r => <div className="report-bar" key={r.label}><div className="bar-value">{r.display}</div><div className="bar" style={{ height: `${(r.value / max) * 100}%` }}></div><div className="bar-label">{r.label}</div></div>)}</div>;
+  return (
+    <div className="report-hbars">
+      {rows.map(r => (
+        <div className="hbar" key={r.label}>
+          <span className="hbar-label">{r.label}</span>
+          <span className="hbar-track"><span className={`hbar-fill ${statusClass(r.label)}`} style={{ width: r.value ? `${Math.max(4, (r.value / max) * 100)}%` : '0%' }} /></span>
+          <strong className="hbar-value">{r.display}</strong>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function AdminReports() {

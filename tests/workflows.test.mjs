@@ -36,10 +36,12 @@ test('all bouquet sizes enforce flower limits while excluding wrappers/ribbons',
     assert.equal(fitsBouquet([...bouquet, { type: 'Flower' }], size), false);
   }
 });
-test('edited images produce escaped SVG artwork, preserving existing artwork when unchanged', () => {
-  const base = { svg: '<svg/>', image: '/image.jpg', width: 180, height: 240 };
-  assert.equal(catalogArtwork({ image: base.image, type: 'Flower', price: 120 }, base).svg, base.svg);
-  const edited = catalogArtwork({ image: '/image.jpg?x=" onload="alert(1)', type: 'Flower' }, base);
-  assert.match(edited.svg, /&quot;/);
-  assert.doesNotMatch(edited.svg, / onload="/);
+test('customizer elements are drawn from a design, never from an image, and colours are validated', () => {
+  const base = { design: { style: 'rose', petals: '#ef9ba8' }, width: 1, height: 1 };
+  const drawn = catalogArtwork({ type: 'Flower', design: { style: 'tulip', petals: '#112233' } }, base);
+  assert.match(drawn.svg, /#112233/);
+  assert.doesNotMatch(drawn.svg, /<image/);
+  const hostile = catalogArtwork({ type: 'Flower', design: { petals: 'red" onload="alert(1)' } }, base);
+  assert.doesNotMatch(hostile.svg, /onload/);
+  assert.ok(catalogArtwork({ type: 'Wrapper', design: { a: '#2b2b30' } }, {}).svgBack.includes('<svg'));
 });
