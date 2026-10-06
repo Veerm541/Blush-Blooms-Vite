@@ -2,18 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCart } from '../context/CartContext.jsx';
 import { peso } from '../lib/format.js';
 import { CUSTOMIZER_PALETTES } from '../data/customizerAssets.js';
+import useCatalog from '../hooks/useCatalog.js';
+import { FLOWER_LIMITS, catalogArtwork, fitsBouquet, flowerCount } from '../lib/bouquet.js';
 
 const SIZES = {
-  Small: { guideWidth: '46%', guideHeight: '58%', title: 'Small', subtitle: 'Compact bouquet' },
-  Medium: { guideWidth: '64%', guideHeight: '72%', title: 'Medium', subtitle: 'Balanced bouquet' },
-  Large: { guideWidth: '82%', guideHeight: '84%', title: 'Large', subtitle: 'Full bouquet' },
+  Small: { guideWidth: '46%', guideHeight: '58%', title: 'Small', subtitle: `Up to ${FLOWER_LIMITS.Small} flowers` },
+  Medium: { guideWidth: '64%', guideHeight: '72%', title: 'Medium', subtitle: `Up to ${FLOWER_LIMITS.Medium} flowers` },
+  Large: { guideWidth: '82%', guideHeight: '84%', title: 'Large', subtitle: `Up to ${FLOWER_LIMITS.Large} flowers` },
 };
 
 const PALETTE_LABELS = {
   Wrapper: 'Wrappers',
   Flower: 'Flowers',
-  Filler: 'Fillers',
-  Greenery: 'Green leaves',
   Ribbon: 'Ribbons',
 };
 
@@ -41,7 +41,10 @@ const frontLayerOf = item => (item.type === 'Wrapper' ? LAYER.wrapperFront : LAY
 
 export default function Customize() {
   const { addToCart, showToast } = useCart();
+  const { assets } = useCatalog();
   const canvasRef = useRef(null);
+  const viewportRef = useRef(null);
+  const paletteRef = useRef(null);
   const uid = useRef(0);
   const drag = useRef(null);
   const elementsRef = useRef([]);
@@ -50,6 +53,7 @@ export default function Customize() {
   const redoRef = useRef([]);
   const clipboardRef = useRef([]);
   const pasteStepRef = useRef(0);
+  const sizeRef = useRef('Medium');
 
   const [elements, setElements] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -61,6 +65,20 @@ export default function Customize() {
   const [palette, setPalette] = useState('Wrapper');
   const [, setHistoryVersion] = useState(0);
   const [clipboardCount, setClipboardCount] = useState(0);
+  const [includeFillers, setIncludeFillers] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 900px)').matches);
+  const [canvasScale, setCanvasScale] = useState(1);
+  const [notice, setNotice] = useState('');
+  const [saving, setSaving] = useState(false);
+  const palettes = Object.fromEntries(Object.keys(PALETTE_LABELS).map(type => [type, assets.filter(asset => asset.type === type && asset.available)
+    .map(asset => catalogArtwork(asset, CUSTOMIZER_PALETTES[type]?.find(base => base.id === asset.id)))]));
+
+  useEffect(() => {
+    const node = viewportRef.current;
+    const observer = new ResizeObserver(() => setCanvasScale(node.clientWidth / 600));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -72,6 +90,18 @@ export default function Customize() {
   const hasWrapper = elements.some(item => item.type === 'Wrapper');
   const canUndo = historyRef.current.length > 0;
   const canRedo = redoRef.current.length > 0;
+  const flowers = flowerCount(elements);
+  const capacity = FLOWER_LIMITS[size];
+  const limitMessage = () => setNotice(`${sizeRef.current} bouquets allow up to ${FLOWER_LIMITS[sizeRef.current]} flowers. Remove a flower or choose a larger size.`);
+  const changeSize = next => {
+    if (!fitsBouquet(elementsRef.current, next)) {
+      setNotice(`Remove flowers before choosing ${next}: its limit is ${FLOWER_LIMITS[next]}. Your bouquet has ${flowerCount(elementsRef.current)}.`);
+      return;
+    }
+    sizeRef.current = next;
+    setSize(next);
+    setNotice('');
+  };
 
   const total = elements.reduce((sum, item) => sum + item.price, 0);
   const counts = useMemo(() => {
@@ -95,7 +125,8 @@ export default function Customize() {
   const pointOnCanvas = event => {
     const node = canvasRef.current;
     const rect = node.getBoundingClientRect();
-    return { x: event.clientX - rect.left - node.clientLeft, y: event.clientY - rect.top - node.clientTop };
+    const scale = rect.width / node.offsetWidth;
+    return { x: (event.clientX - rect.left) / scale - node.clientLeft, y: (event.clientY - rect.top) / scale - node.clientTop };
   };
 
   const cloneElements = list => list.map(item => ({ ...item }));
@@ -121,6 +152,7 @@ export default function Customize() {
 
   const undo = useCallback(() => {
     if (!historyRef.current.length) return;
+    if (!fitsBouquet(historyRef.current.at(-1), sizeRef.current)) { limitMessage(); return; }
     const previous = historyRef.current.pop();
     redoRef.current.push(cloneElements(elementsRef.current));
     setElements(cloneElements(previous));
@@ -130,6 +162,7 @@ export default function Customize() {
 
   const redo = useCallback(() => {
     if (!redoRef.current.length) return;
+    if (!fitsBouquet(redoRef.current.at(-1), sizeRef.current)) { limitMessage(); return; }
     const next = redoRef.current.pop();
     historyRef.current.push(cloneElements(elementsRef.current));
     setElements(cloneElements(next));
@@ -267,6 +300,9 @@ export default function Customize() {
 
   const add = (data, dropPoint) => {
     const current = elementsRef.current;
+    if (!Object.hasOwn(PALETTE_LABELS, data.type)) return;
+    if (!fitsBouquet([...current, data], sizeRef.current)) { limitMessage(); return; }
+    setNotice('');
 
     // One wrapper per bouquet: choosing another one swaps the wrapper design
     // while keeping all flowers in place.
@@ -301,7 +337,7 @@ export default function Customize() {
     event.preventDefault();
     try {
       const data = JSON.parse(event.dataTransfer.getData('text/plain'));
-      const full = Object.values(CUSTOMIZER_PALETTES).flat().find(entry => entry.id === data.id);
+      const full = Object.values(palettes).flat().find(entry => entry.id === data.id);
       if (full) add(full, pointOnCanvas(event));
     } catch {
       // Ignore incomplete browser drag payloads.
@@ -506,6 +542,7 @@ export default function Customize() {
     const existingHasWrapper = elementsRef.current.some(item => item.type === 'Wrapper');
     const pasteable = source.filter(item => !(item.type === 'Wrapper' && existingHasWrapper));
     if (!pasteable.length) return;
+    if (!fitsBouquet([...elementsRef.current, ...pasteable], sizeRef.current)) { limitMessage(); return; }
 
     const { W, H } = canvasSize();
     pasteStepRef.current = (pasteStepRef.current % 5) + 1;
@@ -536,6 +573,7 @@ export default function Customize() {
     if (!ids.length) return;
     const source = elementsRef.current.filter(item => ids.includes(item.uid) && item.type !== 'Wrapper');
     if (!source.length) return;
+    if (!fitsBouquet([...elementsRef.current, ...source], sizeRef.current)) { limitMessage(); return; }
     const { W, H } = canvasSize();
     const copies = source.map(item => ({
       ...item,
@@ -632,6 +670,7 @@ export default function Customize() {
     pushHistory();
     setElements([]);
     setSelectedIds([]);
+    setNotice('');
   };
 
   /* ---------------------------------------------------------------- *
@@ -701,12 +740,15 @@ export default function Customize() {
   };
 
   const save = async () => {
+    if (saving) return;
+    if (!fitsBouquet(elements, size)) { limitMessage(); return; }
     if (!elements.some(item => item.type === 'Flower')) {
       showToast('Please add at least one flower before adding the bouquet to your bag.');
       return;
     }
 
     setSelectedIds([]);
+    setSaving(true);
     let snapshot = null;
     try {
       snapshot = await renderSnapshot();
@@ -720,9 +762,11 @@ export default function Customize() {
       price: total,
       image: snapshot || elements.find(item => item.type === 'Flower')?.image,
       size,
+      includeFillers,
       stemList: counts.map(entry => ({ name: entry.name, type: entry.type, qty: entry.qty })),
       snapshot,
     });
+    setSaving(false);
   };
 
   /* ---------------------------------------------------------------- *
@@ -798,63 +842,46 @@ export default function Customize() {
       </section>
 
       <section className="customizer-help-wrap">
-        <div className="container">
-          <div className="season-notice fade-in" role="note" aria-label="Seasonal availability notice">
-            <span className="season-notice-icon" aria-hidden="true">!</span>
-            <div>
-              <strong>Flowers change with the season</strong>
-              <p>
-                The petals and stems you see here can change from season to season. Some flowers may not be
-                available on certain days, and real flowers can look a little different in shape or color from
-                the picture. If a flower is not available, we will suggest a similar one.
-              </p>
-            </div>
-          </div>
-
-          <div className="customizer-help-card fade-in" aria-label="Customizer visual guide">
-            <div className="customizer-help-title">
-              <span className="customizer-help-icon">?</span>
-              <div>
-                <span>Visual guide</span>
-                <strong>Easy steps</strong>
-              </div>
-            </div>
-            <div className="customizer-help-steps">
-              <div><b>1</b><p><strong>Choose.</strong> Start with a wrapper. Then tap flowers, fillers, and ribbons.</p></div>
-              <div><b>2</b><p><strong>Move.</strong> Tap an item, then hold the pink <em>Drag to move</em> handle and drag it where you want.</p></div>
-              <div><b>3</b><p><strong>Change.</strong> Use the corner dots to resize, or use the big buttons below the picture.</p></div>
-            </div>
-          </div>
+        <div className="container customizer-guidance">
+          <details className="customizer-quick-guide">
+            <summary>How to build your bouquet</summary>
+            <ol><li>Choose a size and open a parts category. Tap a wrapper, flowers, and a ribbon to add them.</li><li>Tap a piece to select it. Drag it to move; use the handles or buttons to resize, rotate, and flip.</li><li>Choose whether the florist should add fillers. Review your summary and add the bouquet to your bag.</li></ol>
+            <p>Computer shortcuts: Ctrl/Cmd+C to copy, V to paste, Z to undo. Drag an empty area to select multiple pieces.</p>
+          </details>
+          <details className="customizer-season-note">
+            <summary>Seasonal flower availability</summary>
+            <p>Real flowers may vary in shape and color. If a flower is unavailable, the florist will suggest a similar one. Your design is a visual guide for the final bouquet.</p>
+          </details>
         </div>
       </section>
 
       <section className="section customizer-section">
         <div className="container builder customizer-builder">
-          <aside className="palette fade-in customizer-palette">
-            <div className="eyebrow">Step 1</div>
-            <h3>Choose what to add</h3>
+          <aside className={`palette customizer-palette${trayOpen ? ' is-open' : ''}`} ref={paletteRef}>
+            <div className="parts-tray-heading"><div><div className="eyebrow">Bouquet parts</div><h3>Choose what to add</h3></div><button className="parts-toggle" type="button" aria-expanded={trayOpen} aria-controls="bouquetParts" onClick={() => setTrayOpen(open => !open)}>{trayOpen ? 'Close parts' : 'Open parts'} <span aria-hidden="true">{trayOpen ? '⌄' : '⌃'}</span></button></div>
             <p className="customizer-readable-copy">Tap an item to place it in the bouquet. On a computer, you can also drag it into the middle.</p>
 
             <div className="palette-tabs customizer-tabs" role="tablist" aria-label="Bouquet parts">
-              {Object.keys(CUSTOMIZER_PALETTES).map(key => (
+              {Object.keys(PALETTE_LABELS).map(key => (
                 <button
                   key={key}
                   type="button"
                   className={palette === key ? 'active' : ''}
-                  onClick={() => setPalette(key)}
-                  aria-selected={palette === key}
+                  onClick={() => { setPalette(key); setTrayOpen(true); }}
+                  role="tab" aria-controls="bouquetParts" aria-selected={palette === key}
                 >
                   {PALETTE_LABELS[key]}
                 </button>
               ))}
             </div>
 
-            <div className="flower-list customizer-item-list">
-              {CUSTOMIZER_PALETTES[palette].map(item => (
+            <div id="bouquetParts" className="flower-list customizer-item-list" role="tabpanel" aria-label={PALETTE_LABELS[palette]} hidden={!trayOpen}>
+              {palettes[palette].map(item => (
                 <button
                   key={item.id}
                   type="button"
                   className="flower-token customizer-item-card"
+                  disabled={item.type === 'Flower' && flowers >= capacity}
                   draggable
                   onDragStart={event => event.dataTransfer.setData('text/plain', JSON.stringify({ id: item.id }))}
                   onClick={() => add(item)}
@@ -862,14 +889,15 @@ export default function Customize() {
                   <span className="customizer-item-visual"><img src={item.image} alt="" /></span>
                   <span className="customizer-item-name">{item.name}</span>
                   <span className="customizer-item-meta">
-                    {peso(item.price)} · {item.type === 'Wrapper' && hasWrapper ? 'Tap to switch' : 'Tap to add'}
+                    {peso(item.price)} · {item.type === 'Flower' && flowers >= capacity ? 'Limit reached' : item.type === 'Wrapper' && hasWrapper ? 'Tap to switch' : 'Tap to add'}
                   </span>
                 </button>
               ))}
+              {!palettes[palette].length && <p className="text-muted">No {PALETTE_LABELS[palette].toLowerCase()} available at the moment.</p>}
             </div>
           </aside>
 
-          <section className="builder-preview fade-in customizer-workspace">
+          <section className="builder-preview customizer-workspace">
             <div className="canvas-toolbar customizer-canvas-toolbar">
               <div>
                 <div className="eyebrow" style={{ margin: 0 }}>Step 2</div>
@@ -877,29 +905,17 @@ export default function Customize() {
               </div>
 
               <div className="customizer-top-controls">
-                <div className="customizer-edit-tools" aria-label="Canvas edit controls">
-                  <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">↶ <span>Undo</span></button>
-                  <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷ <span>Redo</span></button>
-                  <button type="button" onClick={copySelection} disabled={!selectedIds.length} title="Copy selected (Ctrl+C)">⧉ <span>Copy</span></button>
-                  <button type="button" onClick={pasteClipboard} disabled={!clipboardCount} title="Paste (Ctrl+V)">▣ <span>Paste</span></button>
-                  <button type="button" className="clear-tool" onClick={clearCanvas} disabled={!elements.length} title="Clear all objects">× <span>Clear</span></button>
-                </div>
-
                 <label className="snap-toggle customizer-snap-toggle">
                   <input type="checkbox" checked={guidesOn} onChange={event => setGuidesOn(event.target.checked)} />
-                  Help me center things
+                  Show guide & center snapping
                 </label>
               </div>
-            </div>
-
-            <div className="customizer-shortcuts-note">
-              <strong>Computer tips:</strong> Ctrl+C copy · Ctrl+V paste · Ctrl+Z undo · drag an empty area to select many items · Shift+click to add one item to your selection.
             </div>
 
             <div className="size-choice-block">
               <div className="size-choice-copy">
                 <strong>Choose bouquet size</strong>
-                <span>The guide in the middle changes size. It helps you keep the bouquet balanced.</span>
+                <span>Size sets your flower limit. Wrappers and ribbons do not count toward it.</span>
               </div>
               <div className="size-presets customizer-size-presets" role="group" aria-label="Bouquet size">
                 {Object.entries(SIZES).map(([key, info]) => (
@@ -907,7 +923,8 @@ export default function Customize() {
                     key={key}
                     type="button"
                     className={`size-btn customizer-size-btn${size === key ? ' active' : ''}`}
-                    onClick={() => setSize(key)}
+                    aria-pressed={size === key}
+                    onClick={() => changeSize(key)}
                   >
                     <strong>{info.title}</strong>
                     <span>{info.subtitle}</span>
@@ -916,20 +933,33 @@ export default function Customize() {
               </div>
             </div>
 
+                <div className="customizer-edit-tools" aria-label="Canvas edit controls">
+                  <button type="button" aria-label="Undo" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">↶ <span>Undo</span></button>
+                  <button type="button" aria-label="Redo" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷ <span>Redo</span></button>
+                  <button type="button" aria-label="Copy" onClick={copySelection} disabled={!selectedIds.length} title="Copy selected (Ctrl+C)">⧉ <span>Copy</span></button>
+                  <button type="button" aria-label="Paste" onClick={pasteClipboard} disabled={!clipboardCount} title="Paste (Ctrl+V)">▣ <span>Paste</span></button>
+                  <button type="button" aria-label="Clear" className="clear-tool" onClick={clearCanvas} disabled={!elements.length} title="Clear all objects">× <span>Clear</span></button>
+                </div>
+            <div className="canvas-status-row"><span className={flowers >= capacity ? 'flower-count at-limit' : 'flower-count'} aria-live="polite">{flowers} / {capacity} flowers</span><span>Tap to select · drag to arrange</span></div>
+            {notice && <div className="canvas-notice" role="alert">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice('')}>×</button></div>}
+            <div className="canvas-viewport" ref={viewportRef}>
             <div
               className={`canvas customizer-canvas${interacting ? ' is-interacting' : ''}`}
               ref={canvasRef}
+              style={{ transform: `scale(${canvasScale})`, '--canvas-scale': canvasScale }}
+              role="region"
+              aria-label="Bouquet design canvas"
               onPointerDown={beginBoxSelection}
               onDragOver={event => event.preventDefault()}
               onDrop={onDrop}
             >
-              <div
+              {guidesOn && <div
                 className="bouquet-size-guide"
                 style={{ '--guide-width': sizeInfo.guideWidth, '--guide-height': sizeInfo.guideHeight }}
                 aria-hidden="true"
               >
                 <span>{size} bouquet area</span>
-              </div>
+              </div>}
 
               {guides.v && <div className="cv-guide cv-guide-v" aria-hidden="true" />}
               {guides.h && <div className="cv-guide cv-guide-h" aria-hidden="true" />}
@@ -937,14 +967,15 @@ export default function Customize() {
               <div className="drop-hint" hidden={elements.length > 0}>
                 <div>
                   <strong>Your bouquet starts here</strong>
-                  <p>First, choose a wrapper on the left.</p>
+                  <p>Choose a wrapper from the bouquet parts tray.</p>
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
                     onPointerDown={event => event.stopPropagation()}
-                    onClick={() => { setPalette('Wrapper'); add(CUSTOMIZER_PALETTES.Wrapper[0]); }}
+                    disabled={!palettes.Wrapper.length}
+                    onClick={() => { setPalette('Wrapper'); setTrayOpen(true); if (palettes.Wrapper[0]) add(palettes.Wrapper[0]); }}
                   >
-                    Start with the pink wrap
+                    Start with a wrapper
                   </button>
                 </div>
               </div>
@@ -978,7 +1009,7 @@ export default function Customize() {
                   <button
                     type="button"
                     className="cv-move-handle"
-                    style={{ transform: `translate(-50%, 50%) rotate(${-selectedElement.rotation}deg)` }}
+                    style={{ transform: `translate(-50%, 0) rotate(${-selectedElement.rotation}deg)` }}
                     onPointerDown={event => beginInteraction(event, 'move', selectedElement)}
                     title={`Drag ${selectedElement.name} to move it`}
                     aria-label={`Drag ${selectedElement.name} to move it`}
@@ -1017,6 +1048,8 @@ export default function Customize() {
               )}
             </div>
 
+            </div>
+            <button className="mobile-browse-parts btn btn-outline" type="button" onClick={() => { setTrayOpen(true); requestAnimationFrame(() => paletteRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }}>Open bouquet parts</button>
             <div className="selected-element-panel" aria-live="polite">
               <div className="selected-element-heading">
                 <div>
@@ -1044,29 +1077,29 @@ export default function Customize() {
               )}
 
               <div className="flower-toolbar customizer-action-toolbar" hidden={!selectedIds.length}>
-                <button type="button" onClick={() => act('rotate-left')}><span>↶</span>Turn left</button>
-                <button type="button" onClick={() => act('rotate-right')}><span>↷</span>Turn right</button>
-                <button type="button" onClick={() => act('scale-down')}><span>−</span>Smaller</button>
-                <button type="button" onClick={() => act('scale-up')}><span>＋</span>Bigger</button>
-                <button type="button" onClick={() => act('flip')}><span>⇄</span>Flip</button>
+                <button type="button" onClick={() => act('rotate-left')}><span aria-hidden="true">↶</span>Turn left</button>
+                <button type="button" onClick={() => act('rotate-right')}><span aria-hidden="true">↷</span>Turn right</button>
+                <button type="button" onClick={() => act('scale-down')}><span aria-hidden="true">−</span>Smaller</button>
+                <button type="button" onClick={() => act('scale-up')}><span aria-hidden="true">＋</span>Bigger</button>
+                <button type="button" onClick={() => act('flip')}><span aria-hidden="true">⇄</span>Flip</button>
                 <button
                   type="button"
                   onClick={() => act('duplicate')}
                   disabled={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper')}
                   title={selectedElements.length > 0 && selectedElements.every(item => item.type === 'Wrapper') ? 'A bouquet has one wrapper' : 'Duplicate selected item(s)'}
-                ><span>⧉</span>Duplicate</button>
-                <button type="button" className="danger" onClick={() => act('delete')}><span>×</span>Remove</button>
+                ><span aria-hidden="true">⧉</span>Duplicate</button>
+                <button type="button" className="danger" onClick={() => act('delete')}><span aria-hidden="true">×</span>Remove</button>
               </div>
 
               {!selectedIds.length && (
                 <p className="selected-element-empty">
-                  Tip: tap one item to edit it. A pink <b>Drag to move</b> handle will appear so small fillers and leaves are easier to move. On a computer, drag across an empty part of the canvas to select several items at once.
+                  Tap a flower, wrapper, or ribbon to edit it. Use the pink handle to move your selection. On a computer, drag an empty area to select several pieces.
                 </p>
               )}
             </div>
           </section>
 
-          <aside className="builder-summary fade-in customizer-summary">
+          <aside className="builder-summary customizer-summary">
             <div className="eyebrow">Your bouquet</div>
             <h3>Order summary</h3>
             <div className="summary-size-row"><span>Size</span><strong>{size}</strong></div>
@@ -1084,6 +1117,7 @@ export default function Customize() {
               )}
             </div>
 
+            <fieldset className="filler-preference"><legend>Would you like fillers in your bouquet?</legend><p>The florist will choose and add the final filler touches. You do not need to arrange them on the canvas.</p><div className="filler-options"><button type="button" aria-pressed={includeFillers} className={includeFillers ? 'active' : ''} onClick={() => setIncludeFillers(true)}>Yes, add fillers</button><button type="button" aria-pressed={!includeFillers} className={!includeFillers ? 'active' : ''} onClick={() => setIncludeFillers(false)}>No fillers</button></div></fieldset>
             <div className="summary-line customizer-total"><span>Total</span><span className="builder-total">{peso(total)}</span></div>
 
             <div className="builder-requirements customizer-checklist">
@@ -1093,7 +1127,7 @@ export default function Customize() {
             </div>
 
             <div className="customizer-summary-actions">
-              <button className="btn btn-dark save-bouquet" type="button" onClick={save}>Add bouquet to bag</button>
+              <button className="btn btn-dark save-bouquet" type="button" disabled={saving || !flowers} onClick={save}>{saving ? 'Saving bouquet…' : 'Add bouquet to bag'}</button>
               <button className="btn btn-outline clear-bouquet" type="button" onClick={clearCanvas}>Clear everything</button>
             </div>
           </aside>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FILTERS, PRODUCTS } from '../data/products.js';
+import { FILTERS } from '../data/products.js';
+import useCatalog from '../hooks/useCatalog.js';
 import { useCart } from '../context/CartContext.jsx';
 import { peso } from '../lib/format.js';
 
@@ -24,16 +25,17 @@ function EyeIcon() {
 
 export default function Shop() {
   const { addToCart } = useCart();
+  const { products } = useCatalog();
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('default');
   const [selected, setSelected] = useState(null);
 
   const list = useMemo(() => {
-    const out = PRODUCTS.filter(p => filter === 'all' || p.category === filter);
+    const out = products.filter(p => filter === 'all' || p.category === filter);
     if (sort === 'low') out.sort((a, b) => a.price - b.price);
     if (sort === 'high') out.sort((a, b) => b.price - a.price);
     return out;
-  }, [filter, sort]);
+  }, [products, filter, sort]);
 
   return (
     <>
@@ -109,10 +111,11 @@ export default function Shop() {
                     <button
                       type="button"
                       className="shop-action-btn shop-add-btn"
+                      disabled={p.stock <= 0}
                       onClick={() => addToCart(p)}
                     >
                       <span className="shop-action-icon"><BagIcon /></span>
-                      <span>Add to bag</span>
+                      <span>{p.stock <= 0 ? 'Out of stock' : 'Add to bag'}</span>
                     </button>
 
                     <button
@@ -146,7 +149,7 @@ export default function Shop() {
               <p className="text-muted">{selected.desc}</p>
 
               <div className="product-detail-list">
-                <div><strong>Availability</strong><span>Subject to fresh flower stock</span></div>
+                <div><strong>Availability</strong><span>{selected.stock <= 0 ? 'Out of stock' : `${selected.stock} available · subject to fresh flower stock`}</span></div>
                 <div><strong>Fulfillment</strong><span>Store pick-up or eligible delivery</span></div>
                 <div><strong>Customization</strong><span>Use the 2D builder for a personalized arrangement</span></div>
               </div>
@@ -155,10 +158,11 @@ export default function Shop() {
                 <button
                   type="button"
                   className="shop-action-btn shop-add-btn"
+                  disabled={selected.stock <= 0}
                   onClick={() => { addToCart(selected); setSelected(null); }}
                 >
                   <span className="shop-action-icon"><BagIcon /></span>
-                  <span>Add to bag</span>
+                  <span>{selected.stock <= 0 ? 'Out of stock' : 'Add to bag'}</span>
                 </button>
                 <Link className="shop-action-btn shop-details-btn" to="/customize">
                   <span>Build a custom bouquet</span>

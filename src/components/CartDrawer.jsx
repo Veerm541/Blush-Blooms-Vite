@@ -30,6 +30,7 @@ export default function CartDrawer() {
               {i.image && <img src={i.image} alt={i.name} />}
               <div>
                 <strong>{i.name}</strong>
+                {typeof i.includeFillers === 'boolean' && <div className="text-muted cart-filler-preference">{i.includeFillers ? 'Florist finishing touches: add fillers' : 'No fillers requested'}</div>}
                 <div className="text-muted">₱{i.price.toLocaleString()}</div>
                 <div className="qty">
                   <button aria-label="Decrease quantity" onClick={() => changeQty(i.id, -1)}>−</button>
