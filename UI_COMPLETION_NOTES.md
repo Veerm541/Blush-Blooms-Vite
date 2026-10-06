@@ -2,6 +2,14 @@
 
 This prototype pass focuses on completing the visible customer and administrative interfaces described by the current SRS/SDD. Backend/database behavior is still prototype/localStorage based unless already present.
 
+## v8 Shop button and responsive UI pass
+- Reworked Shop card actions into a clearer primary `Add to bag` button and secondary `View details` button with icons.
+- Kept product-card actions aligned by making Shop cards equal-height and pushing actions to the card bottom.
+- Improved Shop grid behavior across desktop, tablet, and phone widths.
+- Made filters horizontally scrollable on narrow phones and the sort control full-width when needed.
+- Made product modal actions responsive and easier to tap.
+- Added consistent focus, hover, active, and minimum touch-target behavior to common buttons without changing their existing functions.
+
 ## Customer UI covered
 - Home / storefront landing page
 - Product catalog with filters, sorting, and product-detail modal
